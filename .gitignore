@@ -36,3 +36,6 @@ temp/*
 # OS
 .DS_Store
 Thumbs.db
+*/outputs/
+*/temp/
+*/uploads/
