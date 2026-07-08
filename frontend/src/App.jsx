@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import ToolbarRibbon from './components/ToolbarRibbon'
 import StatusBar from './components/StatusBar'
 import TreePanel from './components/TreePanel'
@@ -6,11 +7,13 @@ import ImageViewer from './components/ImageViewer'
 import './App.css'
 
 function App() {
+  const [imageUrl, setImageUrl] = useState(null)
+
   return (
     <div className="app-layout">
-      <ToolbarRibbon />
+      <ToolbarRibbon onUpload={setImageUrl} />
       <div className="main-content">
-        <ImageViewer />
+        <ImageViewer imageUrl={imageUrl} />
         <div className="right-column">
           <TreePanel />
           <ChatWindow />

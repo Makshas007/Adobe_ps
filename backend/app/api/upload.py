@@ -69,11 +69,13 @@ async def upload_image(
     if ext not in (".png", ".jpg", ".jpeg", ".webp", ".bmp"):
         ext = ".png"
 
+    fmt = ext.lstrip(".").replace("jpg", "jpeg")
+
     saved_path = save_image(
         image,
         settings.upload_path,
         prefix="upload_",
-        fmt=ext.lstrip("."),
+        fmt=fmt,
     )
 
     logger.info(
