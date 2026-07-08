@@ -55,8 +55,9 @@ Open `http://localhost:8000/docs` for the interactive Swagger UI.
 The 4 GB VRAM on the RTX 2050 is tight but sufficient with these settings:
 
 - **SAM** runs on **CPU** (saves VRAM for diffusion)
-- **InstructPix2Pix** loads in **float16** on GPU
+- **InstructPix2Pix** / **Stable Diffusion Inpainting** loads in **float16** on GPU
 - Models are **unloaded** between pipeline steps
+- **SAM mask is passed to the diffusion pipeline** for guided inpainting — the mask from the `segment` step is consumed by the subsequent `remove` or `replace_background` step to constrain regeneration to the relevant area instead of a blind full-image img2img pass
 
 ```bash
 # Install CUDA 12.4 PyTorch (compatible with driver 550.xx)
@@ -135,9 +136,10 @@ curl -X POST http://localhost:8000/edit \
 **How it works:**
 
 1. Gemini decomposes the prompt into a structured plan (e.g. `segment → remove → change_style`)
-2. The pipeline executes each operation sequentially
-3. Each step produces an intermediate image (returned as base64)
-4. The final image is the output of the last step
+2. The pipeline executes each operation sequentially, passing a **context dict** between steps
+3. The `segment` step stores the SAM-generated mask in the context; `remove` / `replace_background` consume it to constrain diffusion to the relevant area (masked inpainting, not blind full-image img2img)
+4. Each step produces an intermediate image (returned as base64)
+5. The final image is the output of the last step
 
 **Response:**
 
@@ -276,10 +278,10 @@ The Gemini planner maps natural language to structured operations. Here's how pr
 ## Supported Operations
 
 | Operation | Model | Description |
-|---|---|---|
-| `segment` | SAM (ViT-Base) | Segments an object by target name; generates a mask |
-| `remove` | InstructPix2Pix | Removes the main subject, fills with background |
-| `replace_background` | InstructPix2Pix | Replaces image background |
+|---|---|---|---|
+| `segment` | SAM (ViT-Base) | Segments an object by target name; generates a mask (stored in pipeline context) |
+| `remove` | InstructPix2Pix / **SD Inpainting** | Removes the main subject. Uses **masked inpainting** when SAM mask is available from a prior `segment` step; falls back to InstructPix2Pix img2img |
+| `replace_background` | InstructPix2Pix / **SD Inpainting** | Replaces image background. **Inverts** the SAM mask to inpaint only the background area when a mask is available |
 | `change_style` / `style_transfer` | InstructPix2Pix | Applies artistic style transformation |
 | `upscale` | PIL Bicubic (4×) | Upscales the image (ESRGAN when available) |
 
@@ -300,6 +302,8 @@ All settings via `.env` file:
 | `MAX_UPLOAD_SIZE_MB` | `10` | Max upload file size |
 | `REQUEST_TIMEOUT_SECONDS` | `300` | Request timeout |
 | `MODEL_CACHE_TIMEOUT_MINUTES` | `30` | How long to keep models in GPU |
+| `DIFFUSION_LORA_WEIGHTS` | `""` | Path to LoRA adapter weights (`.safetensors` or directory); auto-applied on diffusion load |
+| `DIFFUSION_LORA_ADAPTER_NAME` | `default` | Adapter name for the loaded LoRA weights |
 | `LOG_LEVEL` | `INFO` | Logging: `DEBUG`, `INFO`, `WARNING`, `ERROR` |
 | `CORS_ORIGINS` | `*` | CORS allowed origins (comma-separated) |
 
@@ -310,14 +314,21 @@ All settings via `.env` file:
 ```
 ┌──────────┐    ┌──────────────┐    ┌─────────────┐    ┌──────────────────┐
 │  Client  │ → │  POST /edit  │ → │    Gemini   │ → │  Pipeline Executor│
-│ (curl/UI) │    │              │    │   Planner   │    │                   │
+│ (curl/UI) │    │              │    │   Planner   │    │     (context)     │
 └──────────┘    └──────────────┘    └─────────────┘    └──────────────────┘
-                                      Natural language     │  ┌───────┐
-                                      → structured plan     ├─→│  SAM  │
-                                                            │  └───────┘
-                                                            │  ┌──────────────────┐
-                                                            ├─→│ InstructPix2Pix  │
-                                                            │  └──────────────────┘
+                                      Natural language     │  ┌───────────┐
+                                      → structured plan     ├─→│SAM (CPU)  │──→ mask ─┐
+                                                            │  └───────────┘          │
+                                                            │  ┌──────────────────────┘
+                                                            │  ▼
+                                                            │  ┌──────────────────────────┐
+                                                            ├─→│SD Inpaint (GPU, float16) │
+                                                            │  │ (mask-guided inpainting) │
+                                                            │  └──────────────────────────┘
+                                                            │  ┌──────────────────────────┐
+                                                            ├─→│InstructPix2Pix (GPU)     │
+                                                            │  │ (style transfer, fallback)│
+                                                            │  └──────────────────────────┘
                                                             │  ┌────────┐
                                                             └─→│ ESRGAN │
                                                                └────────┘
@@ -326,6 +337,8 @@ All settings via `.env` file:
 **Key design decisions:**
 
 - **Model Manager singleton** — Only one heavy model in GPU at a time. Models are loaded lazily and unloaded before loading the next. This keeps VRAM usage under control.
+- **Context-passing between steps** — The pipeline carries a `context` dict. `segment` stores the SAM mask; `remove` / `replace_background` consume it to switch from blind img2img to mask-guided inpainting (`StableDiffusionInpaintPipeline`). Background replacement inverts the mask (inpaint background, keep foreground).
+- **LoRA adapter support** — Diffusion models automatically load LoRA adapter weights when `DIFFUSION_LORA_WEIGHTS` is set in `.env`. Adapters are applied via `diffusers.load_lora_weights()` after the base model loads.
 - **Modular services** — Each model (SAM, diffusion, ESRGAN) has its own service class. Adding a new model means creating a new service and registering a loader.
 - **Planner validation** — Gemini's output is validated against a strict schema before execution. Invalid operations are caught early.
 
@@ -366,10 +379,10 @@ backend/
 │   │   ├── gemini_service.py      # google-genai SDK wrapper, GeminiError exception
 │   │   ├── planner.py             # Validates Gemini JSON → structured plan
 │   │   ├── model_manager.py       # Singleton: lazy load, cache, GPU management
-│   │   ├── diffusion_service.py   # InstructPix2Pix / Stable Diffusion wrappers
+│   │   ├── diffusion_service.py   # InstructPix2Pix / SD Inpaint wrappers + LoRA adapter loader
 │   │   ├── sam_service.py         # SAM segmentation (ViT-Base, runs on CPU)
 │   │   ├── esrgan_service.py      # ESRGAN upscaling (with PIL fallback)
-│   │   └── pipeline.py            # Operation handler + pipeline executor
+│   │   └── pipeline.py            # Operation handler + pipeline executor (context-passing between steps)
 │   │
 │   └── utils/
 │       ├── image_utils.py         # load/save/convert/base64 helpers
@@ -483,12 +496,23 @@ print(f"Done in {data['total_duration_ms']:.0f}ms")
 ## Model Details
 
 | Model | ID | Size | VRAM | Runs On |
-|---|---|---|---|---|
+|---|---|---|---|---|---|
 | SAM ViT-Base | `facebook/sam-vit-base` | 358 MB | — (CPU) | CPU |
 | InstructPix2Pix | `timbrooks/instruct-pix2pix` | 2.9 GB | ~3.2 GB | GPU (float16) |
 | Stable Diffusion v1.5 | `runwayml/stable-diffusion-v1-5` | 4.3 GB | ~4.5 GB | GPU (float16) |
 
 Models are downloaded from HuggingFace Hub on first use and cached in `~/.cache/huggingface/hub/`.
+
+### LoRA Adapters
+
+Drop a LoRA `.safetensors` file anywhere and point to it in `.env`:
+
+```env
+DIFFUSION_LORA_WEIGHTS="/path/to/remove-bg-lora.safetensors"
+DIFFUSION_LORA_ADAPTER_NAME="remove_bg"
+```
+
+The adapter is auto-applied every time the diffusion model loads. Call `unload_lora()` from code to remove it per-session. Multiple adapters can be loaded by calling `load_lora()` multiple times with different names; use `set_adapters()` from diffusers to blend them.
 
 ---
 
@@ -500,7 +524,14 @@ Models are downloaded from HuggingFace Hub on first use and cached in `~/.cache/
 # In app/services/pipeline.py
 
 class OperationHandler:
-    def handle_new_effect(self, image, params):
+    def handle_new_effect(
+        self,
+        image: Image.Image,
+        params: Dict[str, Any],
+        context: Optional[Dict[str, Any]] = None,
+    ):
+        # Read artifacts from context (e.g. SAM mask from prior segment step)
+        mask = context.get("mask") if context else None
         # Your implementation
         return result_image, {}
 
@@ -550,6 +581,7 @@ Consider adding:
 | `CUDA not available` | Install CUDA-compatible PyTorch: `pip install torch==2.6.0+cu124 --index-url https://download.pytorch.org/whl/cu124` |
 | `CUDA out of memory` | SAM runs on CPU by default. If diffusion OOMs, set `DEVICE=cpu` in `.env` |
 | `ModuleNotFoundError: No module named 'torch'` | Run `pip install torch torchvision` |
+| `FileNotFoundError: LoRA weights not found` | Check `DIFFUSION_LORA_WEIGHTS` path in `.env` |
 | `Gemini API quota exceeded` | Wait for daily reset or use a different API key |
 | `Image not found` | Upload the image first via `POST /upload`, use the returned `filename` |
 | Server won't start | Check `uvicorn` log for errors. Common: port in use (`fuser -k 8000/tcp`), missing `.env` |
