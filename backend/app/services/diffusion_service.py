@@ -4,6 +4,7 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+import numpy as np
 from PIL import Image
 
 from app.utils.gpu import gpu_memory_usage
@@ -15,6 +16,7 @@ DIFFUSION_MODEL_MAP: Dict[str, str] = {
     "instruct_pix2pix": "timbrooks/instruct-pix2pix",
     "stable_diffusion": "runwayml/stable-diffusion-v1-5",
     "img2img": "runwayml/stable-diffusion-v1-5",
+    "inpaint": "runwayml/stable-diffusion-v1-5",
 }
 
 
@@ -33,6 +35,7 @@ class DiffusionService:
         import torch
         from diffusers import (
             StableDiffusionImg2ImgPipeline,
+            StableDiffusionInpaintPipeline,
             StableDiffusionInstructPix2PixPipeline,
             StableDiffusionPipeline,
         )
@@ -50,6 +53,13 @@ class DiffusionService:
 
         if model_type == "instruct_pix2pix":
             self.pipeline = StableDiffusionInstructPix2PixPipeline.from_pretrained(
+                model_id,
+                torch_dtype=self.dtype,
+                safety_checker=safety_checker,
+                requires_safety_checker=False,
+            )
+        elif model_type == "inpaint":
+            self.pipeline = StableDiffusionInpaintPipeline.from_pretrained(
                 model_id,
                 torch_dtype=self.dtype,
                 safety_checker=safety_checker,
@@ -87,8 +97,12 @@ class DiffusionService:
             raise RuntimeError("Diffusion model not loaded. Call load_model() first.")
 
         if operation == "remove":
+            if "mask" in params:
+                return self._inpaint_with_mask(image, params)
             return self._inpaint_remove(image, params)
         elif operation in ("replace_background",):
+            if "mask" in params:
+                return self._inpaint_with_mask(image, params)
             return self._inpaint_replace_background(image, params)
         elif operation in ("change_style", "style_transfer"):
             return self._apply_style(image, params)
@@ -108,6 +122,28 @@ class DiffusionService:
             guidance_scale=guidance,
             negative_prompt=negative,
             strength=strength,
+        ).images[0]
+
+        return result
+
+    def _inpaint_with_mask(self, image: Image.Image, params: Dict[str, Any]) -> Image.Image:
+        prompt = params.get("prompt", "empty background, remove subject, clean")
+        negative = params.get("negative_prompt", "object, subject, person, thing")
+        guidance = params.get("guidance_scale", 7.5)
+        strength = params.get("strength", 0.85)
+        mask = params["mask"]
+
+        if isinstance(mask, Image.Image):
+            mask = mask.convert("L")
+
+        result = self.pipeline(
+            prompt=prompt,
+            image=image,
+            mask_image=mask,
+            num_inference_steps=params.get("steps", 30),
+            guidance_scale=guidance,
+            strength=strength,
+            negative_prompt=negative,
         ).images[0]
 
         return result
@@ -159,6 +195,20 @@ class DiffusionService:
             ).images[0]
 
         return result
+
+    def load_lora(self, lora_path: str, adapter_name: str = "default") -> None:
+        if self.pipeline is None:
+            raise RuntimeError("Pipeline not loaded. Call load_model() first.")
+        path = Path(lora_path)
+        if not path.exists():
+            raise FileNotFoundError(f"LoRA weights not found: {lora_path}")
+        self.pipeline.load_lora_weights(str(path), adapter_name=adapter_name)
+        logger.info("LoRA weights loaded from %s (adapter: %s)", lora_path, adapter_name)
+
+    def unload_lora(self) -> None:
+        if self.pipeline is not None:
+            self.pipeline.unload_lora_weights()
+            logger.info("LoRA weights unloaded")
 
     def unload(self) -> None:
         if self.pipeline is not None:

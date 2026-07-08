@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     gemini_model: str = "gemini-3.1-flash-lite"
     device: str = ""
     model_paths: Dict[str, str] = {}
+    diffusion_lora_weights: str = ""
+    diffusion_lora_adapter_name: str = "default"
     output_directory: str = "outputs"
     upload_directory: str = "uploads"
     temp_directory: str = "temp"

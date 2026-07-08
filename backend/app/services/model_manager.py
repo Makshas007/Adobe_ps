@@ -95,11 +95,16 @@ class ModelManager:
         return self._ensure_loaded(ModelType.SAM, _load)
 
     def load_diffusion(self, model_path: str = "", model_type: str = "instruct_pix2pix") -> Any:
+        from app.config import settings as app_settings
         from app.services.diffusion_service import DiffusionService
 
         def _load() -> Any:
             service = DiffusionService(device=self.device)
             service.load_model(model_path or "", model_type=model_type)
+            lora_path = app_settings.diffusion_lora_weights
+            if lora_path:
+                adapter_name = app_settings.diffusion_lora_adapter_name or "default"
+                service.load_lora(lora_path, adapter_name=adapter_name)
             return service
 
         return self._ensure_loaded(ModelType.DIFFUSION, _load)

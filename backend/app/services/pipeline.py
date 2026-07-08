@@ -4,6 +4,7 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+import numpy as np
 from PIL import Image
 
 from app.config import settings
@@ -21,10 +22,18 @@ class OperationHandler:
     def __init__(self, model_manager: ModelManager) -> None:
         self.model_manager = model_manager
 
-    def handle_segment(self, image: Image.Image, params: Dict[str, Any]) -> Tuple[Image.Image, Dict[str, Any]]:
+    def handle_segment(
+        self,
+        image: Image.Image,
+        params: Dict[str, Any],
+        context: Optional[Dict[str, Any]] = None,
+    ) -> Tuple[Image.Image, Dict[str, Any]]:
         logger.info("Pipeline step: segment target='%s'", params.get("target", ""))
         service = self.model_manager.load_sam()
         result_image, mask = service.segment_object(image, params)
+
+        if context is not None:
+            context["mask"] = mask
 
         if params.get("save_mask", True):
             mask_path = save_image(
@@ -36,34 +45,72 @@ class OperationHandler:
 
         return result_image, details
 
-    def handle_remove(self, image: Image.Image, params: Dict[str, Any]) -> Tuple[Image.Image, Dict[str, Any]]:
+    def handle_remove(
+        self,
+        image: Image.Image,
+        params: Dict[str, Any],
+        context: Optional[Dict[str, Any]] = None,
+    ) -> Tuple[Image.Image, Dict[str, Any]]:
         logger.info("Pipeline step: remove")
-        service = self.model_manager.load_diffusion()
+        mask = context.get("mask") if context else None
         prompt = params.get("instruction", "remove the main subject, clean background")
-        process_params = {
+
+        process_params: Dict[str, Any] = {
             "prompt": f"empty background, {prompt}",
             "negative_prompt": "object, subject, person, thing, detail",
             "guidance_scale": 7.5,
             "strength": 0.85,
             "steps": 30,
         }
+
+        if mask is not None:
+            logger.info("Using SAM mask for guided inpainting removal")
+            process_params["mask"] = mask
+            service = self.model_manager.load_diffusion(model_type="inpaint")
+        else:
+            service = self.model_manager.load_diffusion()
+
         result = service.process("remove", image, process_params)
         return result, {}
 
-    def handle_replace_background(self, image: Image.Image, params: Dict[str, Any]) -> Tuple[Image.Image, Dict[str, Any]]:
+    def handle_replace_background(
+        self,
+        image: Image.Image,
+        params: Dict[str, Any],
+        context: Optional[Dict[str, Any]] = None,
+    ) -> Tuple[Image.Image, Dict[str, Any]]:
         logger.info("Pipeline step: replace_background with '%s'", params.get("instruction", ""))
-        service = self.model_manager.load_diffusion()
-        process_params = {
+        mask = context.get("mask") if context else None
+
+        process_params: Dict[str, Any] = {
             "instruction": params.get("instruction", "change background"),
             "guidance_scale": 7.5,
             "image_guidance_scale": 1.5,
             "strength": 0.8,
             "steps": 30,
         }
+
+        if mask is not None:
+            logger.info("Using SAM mask for guided background replacement")
+            # Invert: inpaint background (unmasked area), keep foreground (masked area)
+            inv_mask = Image.fromarray(
+                255 - np.array(mask.convert("L")), mode="L"
+            )
+            process_params["mask"] = inv_mask
+            process_params["prompt"] = process_params.pop("instruction")
+            service = self.model_manager.load_diffusion(model_type="inpaint")
+        else:
+            service = self.model_manager.load_diffusion()
+
         result = service.process("replace_background", image, process_params)
         return result, {}
 
-    def handle_style_transfer(self, image: Image.Image, params: Dict[str, Any]) -> Tuple[Image.Image, Dict[str, Any]]:
+    def handle_style_transfer(
+        self,
+        image: Image.Image,
+        params: Dict[str, Any],
+        context: Optional[Dict[str, Any]] = None,
+    ) -> Tuple[Image.Image, Dict[str, Any]]:
         logger.info("Pipeline step: style_transfer with '%s'", params.get("instruction", ""))
         service = self.model_manager.load_diffusion()
         process_params = {
@@ -76,11 +123,21 @@ class OperationHandler:
         result = service.process("style_transfer", image, process_params)
         return result, {}
 
-    def handle_change_style(self, image: Image.Image, params: Dict[str, Any]) -> Tuple[Image.Image, Dict[str, Any]]:
+    def handle_change_style(
+        self,
+        image: Image.Image,
+        params: Dict[str, Any],
+        context: Optional[Dict[str, Any]] = None,
+    ) -> Tuple[Image.Image, Dict[str, Any]]:
         logger.info("Pipeline step: change_style with '%s'", params.get("instruction", ""))
-        return self.handle_style_transfer(image, params)
+        return self.handle_style_transfer(image, params, context)
 
-    def handle_upscale(self, image: Image.Image, params: Dict[str, Any]) -> Tuple[Image.Image, Dict[str, Any]]:
+    def handle_upscale(
+        self,
+        image: Image.Image,
+        params: Dict[str, Any],
+        context: Optional[Dict[str, Any]] = None,
+    ) -> Tuple[Image.Image, Dict[str, Any]]:
         logger.info("Pipeline step: upscale")
         service = self.model_manager.load_esrgan()
         result = service.upscale(image)
@@ -112,6 +169,7 @@ class PipelineExecutor:
         logger.info("Pipeline executing plan with %d steps for job %s", len(plan), job_id)
         current_image = ensure_rgb(input_image)
         steps: List[Dict[str, Any]] = []
+        context: Dict[str, Any] = {}
 
         for step_index, operation in enumerate(plan):
             op_name = operation["operation"]
@@ -128,7 +186,7 @@ class PipelineExecutor:
                 if handler is None:
                     raise ValueError(f"No handler registered for operation: {op_name}")
 
-                current_image, details = handler(current_image, params)
+                current_image, details = handler(current_image, params, context)
                 current_image = ensure_rgb(current_image)
 
                 intermediate = save_image(
