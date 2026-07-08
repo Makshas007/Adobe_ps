@@ -8,15 +8,25 @@ import './App.css'
 
 function App() {
   const [imageUrl, setImageUrl] = useState(null)
+  const [imageFilename, setImageFilename] = useState(null)
+
+  const handleUpload = ({ url, filename }) => {
+    setImageUrl(url)
+    setImageFilename(filename)
+  }
+
+  const handleEditComplete = (newUrl) => {
+    setImageUrl(newUrl)
+  }
 
   return (
     <div className="app-layout">
-      <ToolbarRibbon onUpload={setImageUrl} />
+      <ToolbarRibbon onUpload={handleUpload} />
       <div className="main-content">
         <ImageViewer imageUrl={imageUrl} />
         <div className="right-column">
           <TreePanel />
-          <ChatWindow />
+          <ChatWindow imageFilename={imageFilename} onEditComplete={handleEditComplete} />
         </div>
       </div>
       <StatusBar />

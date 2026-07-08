@@ -1,22 +1,37 @@
 import { useState } from 'react'
 
-export default function ChatWindow() {
+export default function ChatWindow({ imageFilename, onEditComplete }) {
   const [messages, setMessages] = useState([
     { role: 'assistant', text: 'Hello! I can help you edit this image. Try asking me to crop, resize, or apply a filter.' },
   ])
   const [input, setInput] = useState('')
 
-  function handleSend(e) {
+  async function handleSend(e) {
     e.preventDefault()
-    if (!input.trim()) return
-    setMessages([...messages, { role: 'user', text: input }])
+    if (!input.trim() || !imageFilename) return
+
+    const prompt = input
+    setMessages((prev) => [...prev, { role: 'user', text: prompt }])
     setInput('')
-    setTimeout(() => {
-      setMessages((prev) => [
-        ...prev,
-        { role: 'assistant', text: `Applied "${input}" to the image.` },
-      ])
-    }, 500)
+
+    try {
+      const res = await fetch('/edit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt, image: imageFilename }),
+      })
+      if (!res.ok) {
+        setMessages((prev) => [...prev, { role: 'assistant', text: 'Edit failed. Please try again.' }])
+        return
+      }
+
+      const data = await res.json()
+      const dataUri = `data:image/png;base64,${data.final_image}`
+      onEditComplete(dataUri)
+      setMessages((prev) => [...prev, { role: 'assistant', text: `Applied: ${prompt}` }])
+    } catch {
+      setMessages((prev) => [...prev, { role: 'assistant', text: 'Edit failed. Is the backend running?' }])
+    }
   }
 
   return (
@@ -34,9 +49,10 @@ export default function ChatWindow() {
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Ask me to edit the image..."
+          placeholder={imageFilename ? "Ask me to edit the image..." : "Upload an image first"}
+          disabled={!imageFilename}
         />
-        <button type="submit">Send</button>
+        <button type="submit" disabled={!imageFilename}>Send</button>
       </form>
     </aside>
   )

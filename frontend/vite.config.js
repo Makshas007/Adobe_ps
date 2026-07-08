@@ -7,6 +7,9 @@ export default defineConfig({
   server: {
     proxy: {
       '/upload': 'http://localhost:8000',
+      '/edit': 'http://localhost:8000',
+      '/result': 'http://localhost:8000',
+      '/history': 'http://localhost:8000',
     },
   },
 })

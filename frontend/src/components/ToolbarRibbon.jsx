@@ -26,8 +26,9 @@ export default function ToolbarRibbon({ onUpload }) {
       })
       if (!res.ok) return
 
+      const data = await res.json()
       const localUrl = URL.createObjectURL(file)
-      onUpload(localUrl)
+      onUpload({ url: localUrl, filename: data.filename })
     } catch {
       return
     }
