@@ -16,7 +16,7 @@ function App() {
     setImageFilename(filename)
   }
 
-  const handleEditComplete = (newUrl,label,prevNode) => {
+  const handleEditComplete = async (newUrl,label,prevNode) => {
     setImageUrl(newUrl)
     const file = blob(newUrl);
     const {id} =await image.addImage(file);
