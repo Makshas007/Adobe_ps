@@ -101,7 +101,7 @@ const history = {
             return new Promise((resolve, reject) => {
             const transaction = HistoryDB.transaction(["nodes"], "readwrite");
             const store = transaction.objectStore("nodes");
-            const newNodeId = nodeData?.id ?? crypto.randomUUID?.() ?? `${Date.now()}`;
+            const newNodeId = crypto.randomUUID?.() ?? `${Date.now()}`;
             const newNode = { id: newNodeId, ...nodeData, prevNode, nextNode: [] };
             const request = store.put(newNode);
 

@@ -55,7 +55,8 @@ export default function ToolbarRibbon({ onUpload }) {
       const data = await res.json();
       const localUrl = URL.createObjectURL(file);
       onUpload({ url: localUrl, filename: data.filename });
-      await image.addImage()
+      const id=await image.addImage();
+      await history.addNode({label:'Uploaded Image', time:Date.now().toLocaleString(), imageId:id},null)
     } catch {
       return;
     }
