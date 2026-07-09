@@ -6,6 +6,7 @@ import ChatWindow from './components/ChatWindow'
 import ImageViewer from './components/ImageViewer'
 import {image, history} from './utilities/indexedDB.js'
 import './App.css'
+import { dataURLtoBlob } from './utilities/type.js'
 
 function App() {
   const [imageUrl, setImageUrl] = useState(null)
@@ -16,9 +17,9 @@ function App() {
     setImageFilename(filename)
   }
 
-  const handleEditComplete = (newUrl,label,prevNode) => {
+  const handleEditComplete = async (newUrl,label,prevNode) => {
     setImageUrl(newUrl)
-    const file = blob(newUrl);
+    const file = dataURLtoBlob(newUrl);
     const {id} =await image.addImage(file);
     const headNode=await history.addNode({label, time:Date.now().toLocaleString(), imageId:id},prevNode)
 

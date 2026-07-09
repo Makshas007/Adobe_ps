@@ -1,40 +1,37 @@
 let Imgdb, HistoryDB;
-let request = indexedDB.open("Images", 1);
+const request1 = indexedDB.open("Images", 1);
 
-request.onerror = event => {
+request1.onerror = event => {
     console.error("Database error: " + event.target.errorCode);
 };
-request.onupgradeneeded = event => {
+request1.onupgradeneeded = event => {
     const db = event.target.result;
     if (!db.objectStoreNames.contains("images")) {
         db.createObjectStore("images", { keyPath: "id" });
     }
 };
-request.onsuccess = event => {
+request1.onsuccess = event => {
     Imgdb = event.target.result;
 };
 
-request = indexedDB.open("History", 1);
+const request2 = indexedDB.open("History", 1);
 
-request.onerror = event => {
+request2.onerror = event => {
     console.error("Database error: " + event.target.errorCode);
 };
-request.onupgradeneeded = event => {
+request2.onupgradeneeded = event => {
     const db = event.target.result;
     if (!db.objectStoreNames.contains("nodes")) {
         db.createObjectStore("nodes", { keyPath: "id" });
     }
 };
-request.onsuccess = event => {
+request2.onsuccess = event => {
     HistoryDB = event.target.result;
 };
 
 const buildNodeTree = async (head) => {
-    const head_arr = await exports.history.getHeads()
-    if (!head && !head_arr.includes(head)) return null;
-
-    const node = await exports.history.getNode(head);
-    if (!node || node?.previousNode != null) return null;
+    const node = await history.getNode(head);
+    if (!node || node?.nextNode.length == 0) return null;
 
     const childIds = Array.isArray(node.nextNode) ? node.nextNode : [];
     const children = [];
@@ -52,7 +49,7 @@ const buildNodeTree = async (head) => {
 const tree = async (head) => buildNodeTree(head);
 
 const image = {
-    addImage: async (blob) => {
+    addImage: (blob) => {
         return new Promise((resolve, reject) => {
             let id = crypto.randomUUID();
             const transaction = Imgdb.transaction(["images"], "readwrite");
