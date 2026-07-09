@@ -4,6 +4,7 @@ import StatusBar from './components/StatusBar'
 import TreePanel from './components/TreePanel'
 import ChatWindow from './components/ChatWindow'
 import ImageViewer from './components/ImageViewer'
+import {image, history} from './utilities/indexedDB.js'
 import './App.css'
 
 function App() {
@@ -15,8 +16,12 @@ function App() {
     setImageFilename(filename)
   }
 
-  const handleEditComplete = (newUrl) => {
+  const handleEditComplete = (newUrl,label,prevNode) => {
     setImageUrl(newUrl)
+    const file = blob(newUrl);
+    const {id} =await image.addImage(file);
+    const headNode=await history.addNode({label, time:Date.now().toLocaleString(), imageId:id},prevNode)
+
   }
 
   return (

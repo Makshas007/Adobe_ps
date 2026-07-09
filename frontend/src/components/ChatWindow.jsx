@@ -1,6 +1,8 @@
 import { useState } from 'react'
+import {image, history} from '../utilities/indexedDB.js'
+import { dataURLtoBlob } from '../utilities/type.js'
 
-export default function ChatWindow({ imageFilename, onEditComplete }) {
+export default function ChatWindow({ imageHistoryNode, onEditComplete }) {
   const [messages, setMessages] = useState([
     { role: 'assistant', text: 'Hello! I can help you edit this image. Try asking me to crop, resize, or apply a filter.' },
   ])
@@ -8,7 +10,7 @@ export default function ChatWindow({ imageFilename, onEditComplete }) {
 
   async function handleSend(e) {
     e.preventDefault()
-    if (!input.trim() || !imageFilename) return
+    if (!input.trim() || imageHistoryNode?.imgId) return
 
     const prompt = input
     setMessages((prev) => [...prev, { role: 'user', text: prompt }])
@@ -18,7 +20,7 @@ export default function ChatWindow({ imageFilename, onEditComplete }) {
       const res = await fetch('/edit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt, image: imageFilename }),
+        body: JSON.stringify({ prompt, image: await image.getImage(imageHistoryNode.imgId) }),
       })
       if (!res.ok) {
         setMessages((prev) => [...prev, { role: 'assistant', text: 'Edit failed. Please try again.' }])
@@ -27,7 +29,11 @@ export default function ChatWindow({ imageFilename, onEditComplete }) {
 
       const data = await res.json()
       const dataUri = `data:image/png;base64,${data.final_image}`
-      onEditComplete(dataUri)
+      let label=''
+      data.steps.forEach(
+        (e,i)=>label+=i+1===data.steps.length?e+' -> ':e
+      )
+      onEditComplete(dataURLtoBlob(dataUri), label,imageHistoryNode.id )
       setMessages((prev) => [...prev, { role: 'assistant', text: `Applied: ${prompt}` }])
     } catch {
       setMessages((prev) => [...prev, { role: 'assistant', text: 'Edit failed. Is the backend running?' }])
@@ -49,10 +55,10 @@ export default function ChatWindow({ imageFilename, onEditComplete }) {
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder={imageFilename ? "Ask me to edit the image..." : "Upload an image first"}
-          disabled={!imageFilename}
+          placeholder={imageHistoryNode ? "Ask me to edit the image..." : "Upload an image first"}
+          disabled={!imageHistoryNode}
         />
-        <button type="submit" disabled={!imageFilename}>Send</button>
+        <button type="submit" disabled={!imageHistoryNode}>Send</button>
       </form>
     </aside>
   )
