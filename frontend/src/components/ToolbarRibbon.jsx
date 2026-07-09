@@ -50,14 +50,18 @@ export default function ToolbarRibbon({ onUpload }) {
         method: "POST",
         body: formData,
       });
-      if (!res.ok) return;
+      if (!res.ok) {
+        alert("Backend returned error: " + res.statusText);
+        return;
+      }
 
       const data = await res.json();
       const localUrl = URL.createObjectURL(file);
       const {id} = await image.addImage(file);
       const headNode = await history.addNode({label:'Uploaded Image', time:Date.now().toLocaleString(), imageId:id},null)
       onUpload({ url: localUrl, filename: data.filename, historyNode: headNode });
-    } catch {
+    } catch (err) {
+      alert("Upload failed. Make sure the backend is running! Error: " + err.message);
       return;
     }
 

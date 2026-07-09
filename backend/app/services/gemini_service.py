@@ -27,6 +27,7 @@ Each operation object must follow one of these schemas:
 {"operation": "segment", "target": "<object to segment>"}
 {"operation": "remove"}
 {"operation": "replace_background", "new_background": "<description>"}
+{"operation": "remove_background"}
 {"operation": "change_style", "instruction": "<style description>"}
 {"operation": "style_transfer", "instruction": "<style description>"}
 {"operation": "upscale"}
@@ -36,7 +37,8 @@ Rules:
 - Break complex prompts into multiple sequential operations.
 - Use "segment" first if the prompt mentions specific objects.
 - Use "remove" for object removal (requires prior segment).
-- Use "replace_background" to change background.
+- Use "replace_background" to generate a new background using AI.
+- Use "remove_background" if the user wants to make the background transparent.
 - Use "change_style" or "style_transfer" for artistic transformations.
 - End with "upscale" if the final output should be high resolution.
 - Maximum 8 operations per plan.

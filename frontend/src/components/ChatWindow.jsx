@@ -16,7 +16,7 @@ export default function ChatWindow({ imageFilename, imageHistoryNode, onEditComp
 
   async function handleSend(e) {
     e.preventDefault()
-    if (!input.trim() || !imageHistoryNode?.imgId || isLoading) return
+    if (!input.trim() || !imageHistoryNode?.imageId || isLoading) return
 
     const prompt = input
     setMessages((prev) => [...prev, { role: 'user', text: prompt }])
@@ -30,7 +30,12 @@ export default function ChatWindow({ imageFilename, imageHistoryNode, onEditComp
         body: JSON.stringify({ prompt, image: imageFilename }),
       })
       if (!res.ok) {
-        setMessages((prev) => [...prev, { role: 'assistant', text: 'Edit failed. Please try again.' }])
+        let errorMsg = 'Edit failed. Please try again.'
+        try {
+            const errData = await res.json()
+            errorMsg = errData.detail?.detail || errData.detail || errorMsg
+        } catch(e) {}
+        setMessages((prev) => [...prev, { role: 'assistant', text: `Error: ${errorMsg}` }])
         return
       }
 

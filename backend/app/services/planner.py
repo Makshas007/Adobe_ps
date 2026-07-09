@@ -11,6 +11,7 @@ VALID_OPERATIONS = frozenset({
     "segment",
     "remove",
     "replace_background",
+    "remove_background",
     "change_style",
     "style_transfer",
     "upscale",
@@ -25,10 +26,20 @@ OPERATIONS_REQUIRING_INSTRUCTION = frozenset({
 
 
 class Planner:
-    def __init__(self, gemini_service: GeminiService) -> None:
+    def __init__(self, gemini_service: GeminiService | None) -> None:
         self.gemini_service = gemini_service
 
     async def create_plan(self, prompt: str) -> List[Dict[str, Any]]:
+        if not self.gemini_service:
+            # Offline Fallback Mode
+            p = prompt.lower()
+            if "remove background" in p or "transparent" in p:
+                return [{"operation": "segment", "target": "main subject"}, {"operation": "remove"}]
+            if "upscale" in p:
+                return [{"operation": "upscale"}]
+            from app.services.gemini_service import GeminiError
+            raise GeminiError("AI planning disabled (missing API key). Only basic offline commands like 'remove background' are supported.", status_code=503, code="OFFLINE_MODE")
+            
         raw_plan = await self.gemini_service.generate_plan(prompt)
         validated = self._validate(raw_plan)
         logger.info("Plan validated: %d operations", len(validated))

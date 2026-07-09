@@ -25,6 +25,7 @@ ALLOWED_CONTENT_TYPES = frozenset({
 
 
 @router.post("", response_model=UploadResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/", response_model=UploadResponse, status_code=status.HTTP_201_CREATED)
 async def upload_image(
     file: UploadFile,
     settings: Settings = Depends(get_settings),

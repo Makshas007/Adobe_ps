@@ -6,10 +6,10 @@ export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
-      '/upload': 'http://localhost:8000',
-      '/edit': 'http://localhost:8000',
-      '/result': 'http://localhost:8000',
-      '/history': 'http://localhost:8000',
+      '/upload': 'http://127.0.0.1:8001',
+      '/edit': 'http://127.0.0.1:8001',
+      '/result': 'http://127.0.0.1:8001',
+      '/history': 'http://127.0.0.1:8001',
     },
   },
 })
