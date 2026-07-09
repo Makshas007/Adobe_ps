@@ -52,14 +52,15 @@ const buildNodeTree = async (head) => {
 const tree = async (head) => buildNodeTree(head);
 
 const image = {
-    addImage: (id, blob) => {
+    addImage: (blob) => {
         return new Promise((resolve, reject) => {
+            let id = crypto.randomUUID();
             const transaction = Imgdb.transaction(["images"], "readwrite");
             const store = transaction.objectStore("images");
             const request = store.put({ id, blob });
 
             request.onerror = () => reject(new Error("Failed to add image"));
-            request.onsuccess = () => resolve({ id, blob });
+            request.onsuccess = () => resolve({ id });
         });
     },
 
