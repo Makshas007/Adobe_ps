@@ -53,14 +53,14 @@ const tree = async (head) => buildNodeTree(head);
 
 const exports = {
     image: {
-        addImage: (id, datauri) => {
+        addImage: (id, blob) => {
             return new Promise((resolve, reject) => {
                 const transaction = Imgdb.transaction(["images"], "readwrite");
                 const store = transaction.objectStore("images");
-                const request = store.put({ id, datauri });
+                const request = store.put({ id, blob });
 
                 request.onerror = () => reject(new Error("Failed to add image"));
-                request.onsuccess = () => resolve({ id, datauri });
+                request.onsuccess = () => resolve({ id, blob });
             });
         },
 
@@ -71,7 +71,7 @@ const exports = {
                 const request = store.get(id);
 
                 request.onerror = () => reject(new Error(`Failed to retrieve image with id: ${id}`));
-                request.onsuccess = () => resolve(request.result?.datauri || null);
+                request.onsuccess = () => resolve(request.result?.blob || null);
             });
         },
 
