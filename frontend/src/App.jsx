@@ -10,19 +10,21 @@ import { dataURLtoBlob } from './utilities/type.js'
 
 function App() {
   const [imageUrl, setImageUrl] = useState(null)
-  const [imageFilename, setImageFilename] = useState(null)
+  const [imageHistoryNode, setImageHistoryNode] = useState(null)
 
-  const handleUpload = ({ url, filename }) => {
+  const handleUpload = async ({ url, filename, file }) => {
     setImageUrl(url)
-    setImageFilename(filename)
+    const {id} =await image.addImage(file);
+    const headNode=await history.addNode({label:"Uploaded File", time:Date.now().toLocaleString(), imageId:id},null)
+    setImageHistoryNode(headNode)
   }
 
-  const handleEditComplete = async (newUrl,label,prevNode) => {
+  const handleEditComplete = async (newUrl,label) => {
     setImageUrl(newUrl)
     const file = dataURLtoBlob(newUrl);
     const {id} =await image.addImage(file);
-    const headNode=await history.addNode({label, time:Date.now().toLocaleString(), imageId:id},prevNode)
-
+    const node=await history.addNode({label, time:Date.now().toLocaleString(), imageId:id},imageHistoryNode.id)
+    setImageHistoryNode(node)
   }
 
   return (
@@ -32,7 +34,7 @@ function App() {
         <ImageViewer imageUrl={imageUrl} />
         <div className="right-column">
           <TreePanel />
-          <ChatWindow imageFilename={imageFilename} onEditComplete={handleEditComplete} />
+          <ChatWindow imageHistoryNode={imageHistoryNode} onEditComplete={handleEditComplete} />
         </div>
       </div>
       <StatusBar />
