@@ -10,11 +10,14 @@ import { dataURLtoBlob } from './utilities/type.js'
 
 function App() {
   const [imageUrl, setImageUrl] = useState(null)
-  const [imageFilename, setImageFilename] = useState(null)
+  const [imageHistoryNode, setImageHistoryNode] = useState(null)
 
-  const handleUpload = ({ url, filename }) => {
+  const handleUpload = async ({ url, filename }) => {
     setImageUrl(url)
-    setImageFilename(filename)
+    setImageHistoryNode(filename)
+    const {id} =await image.addImage(file);
+    const headNode=await history.addNode({label:'Uploaded Image', time:Date.now().toLocaleString(), imageId:id},null)
+    setImageHistoryNode(headNode)
   }
 
   const handleEditComplete = async (newUrl,label,prevNode) => {
@@ -32,7 +35,7 @@ function App() {
         <ImageViewer imageUrl={imageUrl} />
         <div className="right-column">
           <TreePanel />
-          <ChatWindow imageFilename={imageFilename} onEditComplete={handleEditComplete} />
+          <ChatWindow imageHistoryNode={imageHistoryNode} onEditComplete={handleEditComplete} />
         </div>
       </div>
       <StatusBar />
