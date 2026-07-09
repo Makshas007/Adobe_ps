@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import time
 from typing import Any, Dict, List
@@ -55,7 +56,8 @@ class GeminiService:
         full_prompt = f"{SYSTEM_PROMPT}\n\nUser prompt: {prompt}\n\nOutput the JSON plan:"
 
         try:
-            response = self.client.models.generate_content(
+            response = await asyncio.to_thread(
+                self.client.models.generate_content,
                 model=self.model,
                 contents=full_prompt,
                 config={

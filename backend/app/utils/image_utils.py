@@ -2,14 +2,13 @@ from __future__ import annotations
 
 import base64
 import io
-import logging
 import uuid
 from pathlib import Path
 from typing import Optional, Tuple
 
 import cv2
 import numpy as np
-from PIL import Image, ImageOps
+from PIL import Image
 
 from app.utils.logger import get_logger
 

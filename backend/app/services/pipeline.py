@@ -1,17 +1,13 @@
 from __future__ import annotations
 
 import time
-from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 from PIL import Image
 
 from app.config import settings
-from app.services.diffusion_service import DiffusionService
-from app.services.esrgan_service import ESRGANService
-from app.services.model_manager import ModelManager, ModelType
-from app.services.sam_service import SAMService
+from app.services.model_manager import ModelManager
 from app.utils.image_utils import ensure_rgb, image_to_base64, save_image
 from app.utils.logger import get_logger
 
@@ -146,11 +142,13 @@ class OperationHandler:
 
 class PipelineExecutor:
     def __init__(self) -> None:
+        import asyncio
         self.model_manager = ModelManager(
             device=settings.resolved_device,
             cache_timeout_minutes=settings.model_cache_timeout_minutes,
         )
         self.handler = OperationHandler(self.model_manager)
+        self._lock = asyncio.Lock()
         self._operation_map = {
             "segment": self.handler.handle_segment,
             "remove": self.handler.handle_remove,
@@ -161,6 +159,16 @@ class PipelineExecutor:
         }
 
     async def execute(
+        self,
+        plan: List[Dict[str, Any]],
+        input_image: Image.Image,
+        job_id: str,
+    ) -> List[Dict[str, Any]]:
+        import asyncio
+        async with self._lock:
+            return await asyncio.to_thread(self._execute_sync, plan, input_image, job_id)
+
+    def _execute_sync(
         self,
         plan: List[Dict[str, Any]],
         input_image: Image.Image,
@@ -221,11 +229,12 @@ class PipelineExecutor:
                     "error": str(exc),
                 }
                 steps.append(error_step)
+                self.model_manager.unload_current()
                 raise RuntimeError(
                     f"Pipeline failed at step {step_index + 1} ({op_name}): {exc}"
                 ) from exc
-            finally:
-                self.model_manager.unload_current()
+
+        self.model_manager.unload_current()
 
         logger.info(
             "Pipeline complete for job %s: %d steps executed",

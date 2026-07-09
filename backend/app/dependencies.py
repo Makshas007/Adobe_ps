@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from typing import AsyncGenerator
 
 from fastapi import Depends, HTTPException, status
 
@@ -28,7 +27,7 @@ def get_gemini_service(settings: Settings = Depends(get_settings)) -> GeminiServ
             },
         )
     return GeminiService(
-        api_key=settings.gemini_api_key,
+        api_key=settings.gemini_api_key.get_secret_value(),
         model=settings.gemini_model,
     )
 
@@ -39,5 +38,10 @@ def get_planner(
     return Planner(gemini_service=gemini)
 
 
+_pipeline_executor: PipelineExecutor | None = None
+
 def get_pipeline_executor() -> PipelineExecutor:
-    return PipelineExecutor()
+    global _pipeline_executor
+    if _pipeline_executor is None:
+        _pipeline_executor = PipelineExecutor()
+    return _pipeline_executor

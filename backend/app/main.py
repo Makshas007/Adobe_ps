@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -18,11 +17,8 @@ async def lifespan(app: FastAPI):
     setup_logger(level=settings.log_level)
     app_logger.info("Starting Adobe Mock PS backend")
     app_logger.info("Device: %s", settings.resolved_device)
-    try:
-        import torch
-        cuda_ok = torch.cuda.is_available()
-    except ImportError:
-        cuda_ok = False
+    from app.utils.gpu import cuda_available
+    cuda_ok = cuda_available()
     app_logger.info("CUDA available: %s", cuda_ok)
     app_logger.info("Gemini configured: %s", settings.is_gemini_configured)
 

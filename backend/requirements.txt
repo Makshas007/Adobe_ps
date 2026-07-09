@@ -8,6 +8,7 @@ httpx>=0.28.0
 Pillow>=11.1.0
 opencv-python>=4.10.0
 numpy>=1.26.0
+google-genai>=1.0.0
 
 # AI model dependencies (install separately for GPU support):
 # torch>=2.1.0

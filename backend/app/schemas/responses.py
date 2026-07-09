@@ -41,3 +41,11 @@ class ErrorResponse(BaseModel):
     detail: str
     error_code: str
     suggestion: Optional[str] = None
+
+class UploadResponse(BaseModel):
+    filename: str
+    original_name: str
+    size_bytes: int
+    width: int
+    height: int
+    content_type: str

@@ -8,7 +8,7 @@ from PIL import Image
 
 from app.config import Settings
 from app.dependencies import get_settings
-from app.schemas.requests import UploadResponse
+from app.schemas.responses import UploadResponse
 from app.utils.image_utils import save_image, validate_image
 from app.utils.logger import get_logger
 
@@ -39,17 +39,22 @@ async def upload_image(
             },
         )
 
-    contents = await file.read()
-
-    if len(contents) > settings.max_upload_size_mb * 1024 * 1024:
-        raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail={
-                "error_code": "FILE_TOO_LARGE",
-                "detail": f"File exceeds {settings.max_upload_size_mb} MB limit",
-                "suggestion": f"Compress image or increase MAX_UPLOAD_SIZE_MB in .env",
-            },
-        )
+    contents = bytearray()
+    max_size = settings.max_upload_size_mb * 1024 * 1024
+    
+    while chunk := await file.read(1024 * 1024):
+        contents.extend(chunk)
+        if len(contents) > max_size:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail={
+                    "error_code": "FILE_TOO_LARGE",
+                    "detail": f"File exceeds {settings.max_upload_size_mb} MB limit",
+                    "suggestion": "Compress image or increase MAX_UPLOAD_SIZE_MB in .env",
+                },
+            )
+            
+    contents = bytes(contents)
 
     is_valid, error = validate_image(contents)
     if not is_valid:

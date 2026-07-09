@@ -78,7 +78,7 @@ export default function ToolbarRibbon({ onUpload }) {
       {tools.map((tool) => {
         const Icon = tool.icon;
         return (
-          <button key={tool.label} className="tool-btn" title={tool.label}>
+          <button key={tool.label} className="tool-btn" title={tool.label} onClick={() => alert(`${tool.label} tool is coming soon! Use the chat to edit.`)}>
             <Icon size={16} />
           </button>
         );
