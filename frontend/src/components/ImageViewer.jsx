@@ -1,9 +1,9 @@
-export default function ImageViewer({ imageUrl, onImageLoad }) {
+export default function ImageViewer({ imageUrl }) {
   return (
     <main className="image-viewer">
       <div className="image-canvas">
         {imageUrl ? (
-          <img src={imageUrl} alt="Uploaded" className="uploaded-image" onLoad={(e) => onImageLoad && onImageLoad({ width: e.target.naturalWidth, height: e.target.naturalHeight })} />
+          <img src={imageUrl} alt="Uploaded" className="uploaded-image" />
         ) : (
           <div className="placeholder">
             <p>Active Image</p>
