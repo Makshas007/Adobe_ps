@@ -35,7 +35,9 @@ export default function ChatWindow({ imageHistoryNode, onEditComplete }) {
       )
       onEditComplete(dataURLtoBlob(dataUri), label,imageHistoryNode.id )
       setMessages((prev) => [...prev, { role: 'assistant', text: `Applied: ${prompt}` }])
-    } catch {
+    } catch (err){
+      console.error(err);
+      
       setMessages((prev) => [...prev, { role: 'assistant', text: 'Edit failed. Is the backend running?' }])
     }
   }
