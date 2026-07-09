@@ -1,10 +1,10 @@
-export default function StatusBar() {
+export default function StatusBar({ dimensions, historyCount }) {
   return (
     <footer className="status-bar">
       <span>Zoom: 100%</span>
-      <span>Dimensions: 1920 x 1080</span>
+      <span>Dimensions: {dimensions ? `${dimensions.width} x ${dimensions.height}` : 'N/A'}</span>
       <span>Layer: Background</span>
-      <span>History: 3 operations</span>
+      <span>History: {historyCount} operations</span>
     </footer>
   )
 }

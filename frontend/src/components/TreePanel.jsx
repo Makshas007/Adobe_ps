@@ -10,21 +10,7 @@ import {
 import '@xyflow/react/dist/style.css'
 import dagre from 'dagre'
 import BaseNode from './BaseNode'
-
-const treeData = {
-  id: '1', label: 'Open Image', time: '2:30 PM',
-  children: [
-    { id: '2', label: 'Crop', time: '2:31 PM' },
-    { id: '3', label: 'Adjust Brightness', time: '2:32 PM' },
-    {
-      id: '4', label: 'Add Filter', time: '2:33 PM',
-      children: [
-        { id: '5', label: 'Resize', time: '2:34 PM' },
-        { id: '6', label: 'Apply Sepia', time: '2:35 PM' },
-      ],
-    },
-  ],
-}
+import { history } from '../utilities/indexedDB.js'
 
 function flattenTree(node, edges) {
   const nodes = []
@@ -107,15 +93,29 @@ const defaultEdgeOptions = {
 
 const connectionLineStyle = { stroke: '#FF1E8A', strokeWidth: 2, strokeDasharray: '5 5' }
 
-function FlowCanvas({ miniature }) {
-  const { initialNodes, initialEdges } = useMemo(() => {
-    const edges = []
-    const [rawNodes] = flattenTree(treeData, edges)
-    return { initialNodes: layoutNodes(rawNodes, edges), initialEdges: edges }
-  }, [])
+function FlowCanvas({ miniature, treeData }) {
+  const [nodes, setNodes, onNodesChange] = useNodesState([])
+  const [edges, setEdges, onEdgesChange] = useEdgesState([])
+  const [rfInstance, setRfInstance] = useState(null)
 
-  const [nodes, , onNodesChange] = useNodesState(initialNodes)
-  const [edges, , onEdgesChange] = useEdgesState(initialEdges)
+  useEffect(() => {
+    if (!treeData) {
+      setNodes([]);
+      setEdges([]);
+      return;
+    }
+    const newEdges = []
+    const [rawNodes] = flattenTree(treeData, newEdges)
+    const layoutedNodes = layoutNodes(rawNodes, newEdges)
+    setNodes(layoutedNodes)
+    setEdges(newEdges)
+  }, [treeData, setNodes, setEdges])
+
+  useEffect(() => {
+    if (rfInstance) {
+        setTimeout(() => rfInstance.fitView({ padding: miniature ? 0.6 : 0.25 }), 50);
+    }
+  }, [miniature, treeData, rfInstance]);
 
   return (
     <ReactFlow
@@ -123,6 +123,7 @@ function FlowCanvas({ miniature }) {
       edges={edges}
       onNodesChange={onNodesChange}
       onEdgesChange={onEdgesChange}
+      onInit={setRfInstance}
       nodeTypes={nodeTypes}
       edgeTypes={edgeTypes}
       defaultEdgeOptions={defaultEdgeOptions}
@@ -146,8 +147,9 @@ function FlowCanvas({ miniature }) {
   )
 }
 
-export default function TreePanel() {
+export default function TreePanel({ currentNode }) {
   const [fullscreen, setFullscreen] = useState(false)
+  const [treeData, setTreeData] = useState(null)
 
   const close = useCallback(() => setFullscreen(false), [])
 
@@ -157,6 +159,26 @@ export default function TreePanel() {
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
   }, [fullscreen])
+
+  useEffect(() => {
+    async function loadTree() {
+        const heads = await history.getHeads();
+        if (heads.length > 0) {
+            // Assume the first head is the root for now, or trace back from currentNode
+            let rootId = heads[0].id;
+            if (currentNode) {
+                let curr = await history.getNode(currentNode.id);
+                while (curr && curr.prevNode) {
+                    curr = await history.getNode(curr.prevNode);
+                }
+                if (curr) rootId = curr.id;
+            }
+            const t = await history.getTree(rootId);
+            setTreeData(t);
+        }
+    }
+    loadTree();
+  }, [currentNode]);
 
   return (
     <>
@@ -182,7 +204,7 @@ export default function TreePanel() {
           </button>
         </div>
         <div className="tree-container">
-          <FlowCanvas key={fullscreen ? 'full' : 'mini'} miniature={!fullscreen} />
+          <FlowCanvas miniature={!fullscreen} treeData={treeData} />
         </div>
       </aside>
     </>

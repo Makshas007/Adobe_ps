@@ -5,17 +5,12 @@ from typing import Dict
 
 from pydantic_settings import BaseSettings
 
+from app.utils.gpu import cuda_available
 
-def _cuda_available() -> bool:
-    try:
-        import torch
-        return torch.cuda.is_available()
-    except ImportError:
-        return False
-
+from pydantic import SecretStr
 
 class Settings(BaseSettings):
-    gemini_api_key: str = ""
+    gemini_api_key: SecretStr = SecretStr("")
     gemini_model: str = "gemini-3.1-flash-lite"
     device: str = ""
     model_paths: Dict[str, str] = {}
@@ -28,17 +23,17 @@ class Settings(BaseSettings):
     request_timeout_seconds: int = 300
     model_cache_timeout_minutes: int = 30
     log_level: str = "INFO"
-    cors_origins: str = "*"
+    cors_origins: str = "http://localhost:5173"
 
     @property
     def resolved_device(self) -> str:
         if self.device:
             return self.device
-        return "cuda" if _cuda_available() else "cpu"
+        return "cuda" if cuda_available() else "cpu"
 
     @property
     def is_gemini_configured(self) -> bool:
-        return bool(self.gemini_api_key)
+        return bool(self.gemini_api_key.get_secret_value())
 
     @property
     def output_path(self) -> Path:

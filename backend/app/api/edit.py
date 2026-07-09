@@ -1,14 +1,12 @@
 from __future__ import annotations
 
-import asyncio
 import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from PIL import Image
 
 from app.config import Settings
 from app.dependencies import get_planner, get_pipeline_executor, get_settings
@@ -29,7 +27,12 @@ _jobs: JobStore = {}
 
 
 def _get_upload_path(filename: str, settings: Settings) -> Path:
-    path = settings.upload_path / filename
+    base_path = settings.upload_path.resolve()
+    path = (settings.upload_path / filename).resolve()
+    
+    if not str(path).startswith(str(base_path)):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid filename")
+
     if not path.exists():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -91,6 +94,21 @@ async def edit_image(
         "error": None,
     }
 
+    # Prune jobs older than 1 hour (keep memory usage down)
+    now = time.time()
+    try:
+        to_delete = []
+        for jid, jdata in _jobs.items():
+            if jid == job_id:
+                continue
+            created_dt = datetime.fromisoformat(jdata["created_at"])
+            if (datetime.now(timezone.utc) - created_dt).total_seconds() > 3600:
+                to_delete.append(jid)
+        for jid in to_delete:
+            del _jobs[jid]
+    except Exception as e:
+        logger.warning(f"Failed to prune old jobs: {e}")
+
     try:
         total_start = time.monotonic()
         steps_data = await pipeline.execute(plan, input_image, job_id)
@@ -144,13 +162,14 @@ async def edit_image(
             StepInfo(**s) for s in partial_steps
         ] if partial_steps else []
 
-        return EditResponse(
-            job_id=job_id,
-            status="failed",
-            steps=steps_list,
-            final_image=last_image,
-            total_duration_ms=0.0,
-            error=error_msg,
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={
+                "error_code": "EDIT_FAILED",
+                "detail": f"Edit pipeline failed: {error_msg}",
+                "job_id": job_id,
+                "partial_steps": [s.model_dump() for s in steps_list],
+            },
         )
 
 

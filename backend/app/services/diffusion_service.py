@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-import logging
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-import numpy as np
 from PIL import Image
 
 from app.utils.gpu import gpu_memory_usage
@@ -96,18 +94,20 @@ class DiffusionService:
         if self.pipeline is None:
             raise RuntimeError("Diffusion model not loaded. Call load_model() first.")
 
-        if operation == "remove":
-            if "mask" in params:
-                return self._inpaint_with_mask(image, params)
-            return self._inpaint_remove(image, params)
-        elif operation in ("replace_background",):
-            if "mask" in params:
-                return self._inpaint_with_mask(image, params)
-            return self._inpaint_replace_background(image, params)
-        elif operation in ("change_style", "style_transfer"):
-            return self._apply_style(image, params)
-        else:
-            raise ValueError(f"Unsupported operation for diffusion: {operation}")
+        import torch
+        with torch.inference_mode():
+            if operation == "remove":
+                if "mask" in params:
+                    return self._inpaint_with_mask(image, params)
+                return self._inpaint_remove(image, params)
+            elif operation in ("replace_background",):
+                if "mask" in params:
+                    return self._inpaint_with_mask(image, params)
+                return self._inpaint_replace_background(image, params)
+            elif operation in ("change_style", "style_transfer"):
+                return self._apply_style(image, params)
+            else:
+                raise ValueError(f"Unsupported operation for diffusion: {operation}")
 
     def _inpaint_remove(self, image: Image.Image, params: Dict[str, Any]) -> Image.Image:
         prompt = params.get("prompt", "empty background, remove subject, clean")
@@ -215,3 +215,5 @@ class DiffusionService:
             logger.info("Unloading diffusion pipeline")
             del self.pipeline
             self.pipeline = None
+            from app.utils.gpu import clear_gpu
+            clear_gpu()

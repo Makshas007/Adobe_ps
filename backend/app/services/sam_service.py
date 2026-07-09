@@ -7,7 +7,7 @@ import numpy as np
 import torch
 from PIL import Image
 
-from app.utils.gpu import clear_gpu, gpu_memory_usage
+from app.utils.gpu import clear_gpu
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)

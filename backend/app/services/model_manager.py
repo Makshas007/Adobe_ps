@@ -2,15 +2,12 @@ from __future__ import annotations
 
 import time
 from enum import Enum
-from pathlib import Path
 from typing import Any, Dict, Optional
 
 from app.utils.gpu import (
     clear_gpu,
     get_device,
     gpu_memory_usage,
-    move_to_cpu,
-    move_to_device,
 )
 from app.utils.logger import get_logger
 

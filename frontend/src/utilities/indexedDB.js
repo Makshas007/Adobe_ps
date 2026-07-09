@@ -1,43 +1,52 @@
-let Imgdb, HistoryDB;
-const request1 = indexedDB.open("Images", 1);
+let imgDbPromise = null;
+let histDbPromise = null;
 
-request1.onerror = event => {
-    console.error("Database error: " + event.target.errorCode);
-};
-request1.onupgradeneeded = event => {
-    const db = event.target.result;
-    if (!db.objectStoreNames.contains("images")) {
-        db.createObjectStore("images", { keyPath: "id" });
+function getImgDB() {
+    if (!imgDbPromise) {
+        imgDbPromise = new Promise((resolve, reject) => {
+            const request = indexedDB.open("Images", 1);
+            request.onerror = (e) => reject(new Error("Database error: " + e.target.errorCode));
+            request.onupgradeneeded = (e) => {
+                const db = e.target.result;
+                if (!db.objectStoreNames.contains("images")) {
+                    db.createObjectStore("images", { keyPath: "id" });
+                }
+            };
+            request.onsuccess = (e) => resolve(e.target.result);
+        });
     }
-};
-request1.onsuccess = event => {
-    Imgdb = event.target.result;
-};
+    return imgDbPromise;
+}
 
-const request2 = indexedDB.open("History", 1);
-
-request2.onerror = event => {
-    console.error("Database error: " + event.target.errorCode);
-};
-request2.onupgradeneeded = event => {
-    const db = event.target.result;
-    if (!db.objectStoreNames.contains("nodes")) {
-        db.createObjectStore("nodes", { keyPath: "id" });
+function getHistoryDB() {
+    if (!histDbPromise) {
+        histDbPromise = new Promise((resolve, reject) => {
+            const request = indexedDB.open("History", 1);
+            request.onerror = (e) => reject(new Error("Database error: " + e.target.errorCode));
+            request.onupgradeneeded = (e) => {
+                const db = e.target.result;
+                if (!db.objectStoreNames.contains("nodes")) {
+                    db.createObjectStore("nodes", { keyPath: "id" });
+                }
+            };
+            request.onsuccess = (e) => resolve(e.target.result);
+        });
     }
-};
-request2.onsuccess = event => {
-    HistoryDB = event.target.result;
-};
+    return histDbPromise;
+}
 
 const buildNodeTree = async (head) => {
+    const head_arr = await history.getHeads();
+    if (!head && !head_arr.includes(head)) return null;
+
     const node = await history.getNode(head);
-    if (!node || node?.nextNode.length == 0) return null;
+    if (!node || node.prevNode != null) return null;
 
     const childIds = Array.isArray(node.nextNode) ? node.nextNode : [];
     const children = [];
 
     for (const childId of childIds) {
-        const childTree = await buildNodeTree(childId);
+        const childTree = await _buildNodeTreeHelper(childId);
         if (childTree) {
             children.push(childTree);
         }
@@ -46,13 +55,31 @@ const buildNodeTree = async (head) => {
     return { ...node, children };
 };
 
+const _buildNodeTreeHelper = async (nodeId) => {
+    const node = await history.getNode(nodeId);
+    if (!node) return null;
+
+    const childIds = Array.isArray(node.nextNode) ? node.nextNode : [];
+    const children = [];
+
+    for (const childId of childIds) {
+        const childTree = await _buildNodeTreeHelper(childId);
+        if (childTree) {
+            children.push(childTree);
+        }
+    }
+
+    return { ...node, children };
+}
+
 const tree = async (head) => buildNodeTree(head);
 
 const image = {
-    addImage: (blob) => {
+    addImage: async (blob) => {
+        const db = await getImgDB();
         return new Promise((resolve, reject) => {
             let id = crypto.randomUUID();
-            const transaction = Imgdb.transaction(["images"], "readwrite");
+            const transaction = db.transaction(["images"], "readwrite");
             const store = transaction.objectStore("images");
             const request = store.put({ id, blob });
 
@@ -61,9 +88,10 @@ const image = {
         });
     },
 
-    getImage: (id) => {
+    getImage: async (id) => {
+        const db = await getImgDB();
         return new Promise((resolve, reject) => {
-            const transaction = Imgdb.transaction(["images"], "readonly");
+            const transaction = db.transaction(["images"], "readonly");
             const store = transaction.objectStore("images");
             const request = store.get(id);
 
@@ -72,9 +100,10 @@ const image = {
         });
     },
 
-    deleteImage: (id) => {
+    deleteImage: async (id) => {
+        const db = await getImgDB();
         return new Promise((resolve, reject) => {
-            const transaction = Imgdb.transaction(["images"], "readwrite");
+            const transaction = db.transaction(["images"], "readwrite");
             const store = transaction.objectStore("images");
             const request = store.delete(id);
 
@@ -83,9 +112,10 @@ const image = {
         });
     },
 
-    getAllImages: () => {
+    getAllImages: async () => {
+        const db = await getImgDB();
         return new Promise((resolve, reject) => {
-            const transaction = Imgdb.transaction(["images"], "readonly");
+            const transaction = db.transaction(["images"], "readonly");
             const store = transaction.objectStore("images");
             const request = store.getAll();
 
@@ -94,10 +124,12 @@ const image = {
         });
     }
 }
+
 const history = {
-        addNode: (nodeData, prevNode = null) => {
-            return new Promise((resolve, reject) => {
-            const transaction = HistoryDB.transaction(["nodes"], "readwrite");
+    addNode: async (nodeData, prevNode = null) => {
+        const db = await getHistoryDB();
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction(["nodes"], "readwrite");
             const store = transaction.objectStore("nodes");
             const newNodeId = crypto.randomUUID?.() ?? `${Date.now()}`;
             const newNode = { id: newNodeId, ...nodeData, prevNode, nextNode: [] };
@@ -130,20 +162,24 @@ const history = {
                 };
             };
         });
-        },
-getNode: (id) => {
-    return new Promise((resolve, reject) => {
-        const transaction = HistoryDB.transaction(["nodes"], "readonly");
-        const store = transaction.objectStore("nodes");
-        const request = store.get(id);
+    },
 
-        request.onerror = () => reject(new Error(`Failed to retrieve node with id: ${id}`));
-        request.onsuccess = () => resolve(request.result || null);
-    });
-},
-    getHeads: () => {
+    getNode: async (id) => {
+        const db = await getHistoryDB();
         return new Promise((resolve, reject) => {
-            const transaction = HistoryDB.transaction(["nodes"], "readonly");
+            const transaction = db.transaction(["nodes"], "readonly");
+            const store = transaction.objectStore("nodes");
+            const request = store.get(id);
+
+            request.onerror = () => reject(new Error(`Failed to retrieve node with id: ${id}`));
+            request.onsuccess = () => resolve(request.result || null);
+        });
+    },
+
+    getHeads: async () => {
+        const db = await getHistoryDB();
+        return new Promise((resolve, reject) => {
+            const transaction = db.transaction(["nodes"], "readonly");
             const store = transaction.objectStore("nodes");
             const request = store.getAll();
 
@@ -154,13 +190,10 @@ getNode: (id) => {
             };
         });
     },
-        getTree: (id) => {
-            return new Promise((resolve, reject) => {
-                buildNodeTree(id).then(resolve).catch(reject);
-            });
-        },
 
-    }
+    getTree: async (id) => {
+        return buildNodeTree(id);
+    },
+}
 
-
-export {image, history}
+export { image, history }
