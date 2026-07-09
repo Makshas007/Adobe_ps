@@ -51,112 +51,111 @@ const buildNodeTree = async (head) => {
 
 const tree = async (head) => buildNodeTree(head);
 
-const exports = {
-    image: {
-        addImage: (id, blob) => {
-            return new Promise((resolve, reject) => {
-                const transaction = Imgdb.transaction(["images"], "readwrite");
-                const store = transaction.objectStore("images");
-                const request = store.put({ id, blob });
+const image = {
+    addImage: (id, blob) => {
+        return new Promise((resolve, reject) => {
+            const transaction = Imgdb.transaction(["images"], "readwrite");
+            const store = transaction.objectStore("images");
+            const request = store.put({ id, blob });
 
-                request.onerror = () => reject(new Error("Failed to add image"));
-                request.onsuccess = () => resolve({ id, blob });
-            });
-        },
-
-        getImage: (id) => {
-            return new Promise((resolve, reject) => {
-                const transaction = Imgdb.transaction(["images"], "readonly");
-                const store = transaction.objectStore("images");
-                const request = store.get(id);
-
-                request.onerror = () => reject(new Error(`Failed to retrieve image with id: ${id}`));
-                request.onsuccess = () => resolve(request.result?.blob || null);
-            });
-        },
-
-        deleteImage: (id) => {
-            return new Promise((resolve, reject) => {
-                const transaction = Imgdb.transaction(["images"], "readwrite");
-                const store = transaction.objectStore("images");
-                const request = store.delete(id);
-
-                request.onerror = () => reject(new Error(`Failed to delete image with id: ${id}`));
-                request.onsuccess = () => resolve(true);
-            });
-        },
-
-        getAllImages: () => {
-            return new Promise((resolve, reject) => {
-                const transaction = Imgdb.transaction(["images"], "readonly");
-                const store = transaction.objectStore("images");
-                const request = store.getAll();
-
-                request.onerror = () => reject(new Error("Failed to retrieve images"));
-                request.onsuccess = () => resolve(request.result);
-            });
-        }
+            request.onerror = () => reject(new Error("Failed to add image"));
+            request.onsuccess = () => resolve({ id, blob });
+        });
     },
-    history: {
+
+    getImage: (id) => {
+        return new Promise((resolve, reject) => {
+            const transaction = Imgdb.transaction(["images"], "readonly");
+            const store = transaction.objectStore("images");
+            const request = store.get(id);
+
+            request.onerror = () => reject(new Error(`Failed to retrieve image with id: ${id}`));
+            request.onsuccess = () => resolve(request.result?.blob || null);
+        });
+    },
+
+    deleteImage: (id) => {
+        return new Promise((resolve, reject) => {
+            const transaction = Imgdb.transaction(["images"], "readwrite");
+            const store = transaction.objectStore("images");
+            const request = store.delete(id);
+
+            request.onerror = () => reject(new Error(`Failed to delete image with id: ${id}`));
+            request.onsuccess = () => resolve(true);
+        });
+    },
+
+    getAllImages: () => {
+        return new Promise((resolve, reject) => {
+            const transaction = Imgdb.transaction(["images"], "readonly");
+            const store = transaction.objectStore("images");
+            const request = store.getAll();
+
+            request.onerror = () => reject(new Error("Failed to retrieve images"));
+            request.onsuccess = () => resolve(request.result);
+        });
+    }
+}
+const history = {
         addNode: (nodeData, prevNode = null) => {
             return new Promise((resolve, reject) => {
-                const transaction = HistoryDB.transaction(["nodes"], "readwrite");
-                const store = transaction.objectStore("nodes");
-                const newNodeId = nodeData?.id ?? crypto.randomUUID?.() ?? `${Date.now()}`;
-                const newNode = { id: newNodeId, ...nodeData, prevNode, nextNode: [] };
-                const request = store.put(newNode);
+            const transaction = HistoryDB.transaction(["nodes"], "readwrite");
+            const store = transaction.objectStore("nodes");
+            const newNodeId = nodeData?.id ?? crypto.randomUUID?.() ?? `${Date.now()}`;
+            const newNode = { id: newNodeId, ...nodeData, prevNode, nextNode: [] };
+            const request = store.put(newNode);
 
-                request.onerror = () => reject(new Error("Failed to add node"));
-                request.onsuccess = () => {
-                    if (!prevNode) {
+            request.onerror = () => reject(new Error("Failed to add node"));
+            request.onsuccess = () => {
+                if (!prevNode) {
+                    resolve(newNode);
+                    return;
+                }
+
+                const prevRequest = store.get(prevNode);
+                prevRequest.onerror = () => reject(new Error("Failed to update previous node"));
+                prevRequest.onsuccess = () => {
+                    const previousNode = prevRequest.result;
+                    if (!previousNode) {
                         resolve(newNode);
                         return;
                     }
 
-                    const prevRequest = store.get(prevNode);
-                    prevRequest.onerror = () => reject(new Error("Failed to update previous node"));
-                    prevRequest.onsuccess = () => {
-                        const previousNode = prevRequest.result;
-                        if (!previousNode) {
-                            resolve(newNode);
-                            return;
-                        }
+                    const nextNode = Array.isArray(previousNode.nextNode) ? previousNode.nextNode : [];
+                    if (!nextNode.includes(newNodeId)) {
+                        nextNode.push(newNodeId);
+                    }
 
-                        const nextNode = Array.isArray(previousNode.nextNode) ? previousNode.nextNode : [];
-                        if (!nextNode.includes(newNodeId)) {
-                            nextNode.push(newNodeId);
-                        }
-
-                        const updateRequest = store.put({ ...previousNode, nextNode });
-                        updateRequest.onerror = () => reject(new Error("Failed to update previous node"));
-                        updateRequest.onsuccess = () => resolve(newNode);
-                    };
+                    const updateRequest = store.put({ ...previousNode, nextNode });
+                    updateRequest.onerror = () => reject(new Error("Failed to update previous node"));
+                    updateRequest.onsuccess = () => resolve(newNode);
                 };
-            });
+            };
+        });
         },
-        getNode: (id) => {
-            return new Promise((resolve, reject) => {
-                const transaction = HistoryDB.transaction(["nodes"], "readonly");
-                const store = transaction.objectStore("nodes");
-                const request = store.get(id);
+getNode: (id) => {
+    return new Promise((resolve, reject) => {
+        const transaction = HistoryDB.transaction(["nodes"], "readonly");
+        const store = transaction.objectStore("nodes");
+        const request = store.get(id);
 
-                request.onerror = () => reject(new Error(`Failed to retrieve node with id: ${id}`));
-                request.onsuccess = () => resolve(request.result || null);
-            });
-        },
-        getHeads: () => {
-            return new Promise((resolve, reject) => {
-                const transaction = HistoryDB.transaction(["nodes"], "readonly");
-                const store = transaction.objectStore("nodes");
-                const request = store.getAll();
+        request.onerror = () => reject(new Error(`Failed to retrieve node with id: ${id}`));
+        request.onsuccess = () => resolve(request.result || null);
+    });
+},
+    getHeads: () => {
+        return new Promise((resolve, reject) => {
+            const transaction = HistoryDB.transaction(["nodes"], "readonly");
+            const store = transaction.objectStore("nodes");
+            const request = store.getAll();
 
-                request.onerror = () => reject(new Error("Failed to retrieve heads"));
-                request.onsuccess = () => {
-                    const heads = request.result.filter(node => !node.prevNode);
-                    resolve(heads);
-                };
-            });
-        },
+            request.onerror = () => reject(new Error("Failed to retrieve heads"));
+            request.onsuccess = () => {
+                const heads = request.result.filter(node => !node.prevNode);
+                resolve(heads);
+            };
+        });
+    },
         getTree: (id) => {
             return new Promise((resolve, reject) => {
                 buildNodeTree(id).then(resolve).catch(reject);
@@ -164,6 +163,6 @@ const exports = {
         },
 
     }
-}
 
-export default exports
+
+export {image, history}
