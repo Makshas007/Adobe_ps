@@ -52,7 +52,7 @@ const buildNodeTree = async (head) => {
 const tree = async (head) => buildNodeTree(head);
 
 const image = {
-    addImage: (blob) => {
+    addImage: async (blob) => {
         return new Promise((resolve, reject) => {
             let id = crypto.randomUUID();
             const transaction = Imgdb.transaction(["images"], "readwrite");
