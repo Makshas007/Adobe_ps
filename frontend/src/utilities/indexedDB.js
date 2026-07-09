@@ -30,10 +30,11 @@ request.onsuccess = event => {
 };
 
 const buildNodeTree = async (head) => {
-    if (!head) return null;
+    const head_arr = await exports.history.getHeads()
+    if (!head && !head_arr.includes(head)) return null;
 
     const node = await exports.history.getNode(head);
-    if (!node||node?.previousNode!=null) return null;
+    if (!node || node?.previousNode != null) return null;
 
     const childIds = Array.isArray(node.nextNode) ? node.nextNode : [];
     const children = [];
