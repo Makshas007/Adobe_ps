@@ -14,17 +14,17 @@ function App() {
 
   const handleUpload = async ({ url, filename, file }) => {
     setImageUrl(url)
-    const {id} =await image.addImage(file);
-    const headNode=await history.addNode({label:"Uploaded File", time:Date.now().toLocaleString(), imageId:id},null)
-    setImageHistoryNode(headNode)
+    const {id} = await image.addImage(file);
+    const headNode = await history.addNode({label:"Uploaded File", time:new Date().toLocaleString(), imageId:id}, null)
+    setImageHistoryNode({ ...headNode, filename })
   }
 
-  const handleEditComplete = async (newUrl,label) => {
-    setImageUrl(newUrl)
-    const file = dataURLtoBlob(newUrl);
-    const {id} =await image.addImage(file);
-    const node=await history.addNode({label, time:Date.now().toLocaleString(), imageId:id},imageHistoryNode.id)
-    setImageHistoryNode(node)
+  const handleEditComplete = async (dataUri, label) => {
+    setImageUrl(dataUri)
+    const blob = dataURLtoBlob(dataUri);
+    const {id} = await image.addImage(blob);
+    const node = await history.addNode({label, time:new Date().toLocaleString(), imageId:id}, imageHistoryNode.id)
+    setImageHistoryNode({ ...node, filename: imageHistoryNode.filename })
   }
 
   return (

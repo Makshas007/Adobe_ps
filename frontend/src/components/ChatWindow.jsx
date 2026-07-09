@@ -1,6 +1,4 @@
 import { useState } from 'react'
-import {image, history} from '../utilities/indexedDB.js'
-import { dataURLtoBlob } from '../utilities/type.js'
 
 export default function ChatWindow({ imageHistoryNode, onEditComplete }) {
   const [messages, setMessages] = useState([
@@ -10,7 +8,7 @@ export default function ChatWindow({ imageHistoryNode, onEditComplete }) {
 
   async function handleSend(e) {
     e.preventDefault()
-    if (!input.trim() || imageHistoryNode?.imgId) return
+    if (!input.trim() || !imageHistoryNode) return
 
     const prompt = input
     setMessages((prev) => [...prev, { role: 'user', text: prompt }])
@@ -20,7 +18,7 @@ export default function ChatWindow({ imageHistoryNode, onEditComplete }) {
       const res = await fetch('/edit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt, image: await image.getImage(imageHistoryNode.imgId) }),
+        body: JSON.stringify({ prompt, image: imageHistoryNode.filename }),
       })
       if (!res.ok) {
         setMessages((prev) => [...prev, { role: 'assistant', text: 'Edit failed. Please try again.' }])
@@ -31,9 +29,9 @@ export default function ChatWindow({ imageHistoryNode, onEditComplete }) {
       const dataUri = `data:image/png;base64,${data.final_image}`
       let label=''
       data.steps.forEach(
-        (e,i)=>label+=i+1===data.steps.length?e+' -> ':e
+        (e,i)=>label+=i+1===data.steps.length?e.operation:e.operation+' -> '
       )
-      onEditComplete(dataURLtoBlob(dataUri), label,imageHistoryNode.id )
+      onEditComplete(dataUri, label)
       setMessages((prev) => [...prev, { role: 'assistant', text: `Applied: ${prompt}` }])
     } catch (err){
       console.error(err);

@@ -1,4 +1,5 @@
 import { useRef } from "react";
+
 import {
   Upload,
   Scissors,
@@ -14,7 +15,7 @@ import {
   Download,
   MousePointer,
 } from "lucide-react";
-import {image, history} from '../utilities/indexedDB.js';
+
 
 export default function ToolbarRibbon({ onUpload }) {
   const fileInputRef = useRef(null);
@@ -54,9 +55,7 @@ export default function ToolbarRibbon({ onUpload }) {
 
       const data = await res.json();
       const localUrl = URL.createObjectURL(file);
-      onUpload({ url: localUrl, filename: data.filename });
-      const {id} =await image.addImage(file);
-      const headNode=await history.addNode({label:'Uploaded Image', time:Date.now().toLocaleString(), imageId:id},null)
+      onUpload({ url: localUrl, filename: data.filename, file });
     } catch {
       return;
     }
