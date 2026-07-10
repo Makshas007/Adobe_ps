@@ -23,24 +23,46 @@ function App() {
     setHistoryVersion(v => v + 1)
   }
 
-  const setNode=async(node)=>{
-    setImageHistoryNode(await history.getNode(node));
-    const imgBlob = await image.getImage(imageHistoryNode.imgId);
-    blobToDataURL(imgBlob,res=>setImageUrl(res))
-  }
+  const setNode = async (nodeId) => {
+    if (!nodeId) return
 
-  const nextNode=async()=>{
-    if(imageHistoryNode?.nextNode.length)return;
-    else if(imageHistoryNode.nextNode.length===1) await setNode( imageHistoryNode.nextNode[0] );
-    else {
-    const i = parseInt(prompt("Enter Index to go to")??1);
-    await  setNode(imageHistoryNode.nextNode[i-1]);
+    const nextNodeData = await history.getNode(nodeId)
+    if (!nextNodeData) return
+
+    setImageHistoryNode(nextNodeData)
+
+    if (nextNodeData.imageId) {
+      const imgBlob = await image.getImage(nextNodeData.imageId)
+      if (imgBlob) {
+        blobToDataURL(imgBlob, (res) => setImageUrl(res))
+      } else {
+        setImageUrl(null)
+      }
+    } else {
+      setImageUrl(null)
     }
   }
 
-  const prevNode=async()=>{
-    if(imageHistoryNode?.prevNode)return;
-    else setNode(imageHistoryNode.prevNode)
+  const nextNode = async () => {
+    if (!imageHistoryNode?.nextNode?.length) return
+
+    const nextIds = Array.isArray(imageHistoryNode.nextNode) ? imageHistoryNode.nextNode : []
+    if (nextIds.length === 1) {
+      await setNode(nextIds[0])
+      return
+    }
+
+    const choice = window.prompt('Enter index to go to', '1')
+    const index = Number.parseInt(choice ?? '1', 10)
+    const targetId = nextIds[index - 1]
+    if (targetId) {
+      await setNode(targetId)
+    }
+  }
+
+  const prevNode = async () => {
+    if (!imageHistoryNode?.prevNode) return
+    await setNode(imageHistoryNode.prevNode)
   }
 
   const handleEditComplete = async (dataUri, label) => {
@@ -59,12 +81,12 @@ function App() {
         <ImageViewer imageUrl={imageUrl} />
         <button
           onClick={prevNode}
-          disabled={imageHistoryNode!=={}||imageHistoryNode?.prevNode}
+          disabled={!imageHistoryNode || !imageHistoryNode.prevNode}
         >Back</button>
 
         <button
           onClick={nextNode}
-          disabled={imageHistoryNode!=={}||imageHistoryNode?.nextNode.length}
+          disabled={!imageHistoryNode || !imageHistoryNode.nextNode?.length}
         >
           Front</button>
         <div className="right-column">
