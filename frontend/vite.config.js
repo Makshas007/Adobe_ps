@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react'
 
 // https://vite.dev/config/
 
- const SERVER = 'https://bronze-remote-tan-uncertainty.trycloudflare.com'//'http://localhost:8000'
+const SERVER = 'https://jewellery-eos-believes-assumptions.trycloudflare.com'//'http://localhost:8000'
 export default defineConfig({
   plugins: [react()],
   server: {
