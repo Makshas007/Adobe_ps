@@ -11,7 +11,7 @@ import { dataURLtoBlob } from './utilities/type.js'
 function App() {
   const [imageUrl, setImageUrl] = useState(null)
   const [imageHistoryNode, setImageHistoryNode] = useState(null)
-  const [head, setHead]=useState(null)
+  const [head, setHead]=useState({})
 
   const handleUpload = async ({ url, filename, file }) => {
     setImageUrl(url)

@@ -160,7 +160,9 @@ export default function TreePanel({headId}) {
     return () => window.removeEventListener('keydown', handler)
   }, [fullscreen])
   
-  history.getTree(headId).then(data=>console.log(data)).catch(err=>console.log(err))
+  useEffect(()=>{
+    history.getTree(headId).then(data=>{console.log(data); setTree(data??{})}).catch(err=>console.log(err))
+  },[])
   
   return (
     <>
