@@ -2,14 +2,16 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
 // https://vite.dev/config/
+
+ const SERVER = 'https://bronze-remote-tan-uncertainty.trycloudflare.com'//'http://localhost:8000'
 export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
-      '/upload': 'http://localhost:8000',
-      '/edit': 'http://localhost:8000',
-      '/result': 'http://localhost:8000',
-      '/history': 'http://localhost:8000',
+      '/upload': SERVER,
+      '/edit': SERVER,
+      '/result': SERVER,
+      '/history': SERVER,
     },
   },
 })

@@ -10,8 +10,9 @@ import {
 import '@xyflow/react/dist/style.css'
 import dagre from 'dagre'
 import BaseNode from './BaseNode'
+import { history } from '../utilities/indexedDB'
 
-const treeData = {
+const sample={
   id: '1', label: 'Open Image', time: '2:30 PM',
   children: [
     { id: '2', label: 'Crop', time: '2:31 PM' },
@@ -100,64 +101,67 @@ function HistoryEdge({
 
 const nodeTypes = { historyNode: HistoryNode }
 const edgeTypes = { historyEdge: HistoryEdge }
-
 const defaultEdgeOptions = {
   type: 'historyEdge',
 }
 
+
 const connectionLineStyle = { stroke: '#FF1E8A', strokeWidth: 2, strokeDasharray: '5 5' }
 
-function FlowCanvas({ miniature }) {
+function FlowCanvas({ miniature, treeData }) {
   const { initialNodes, initialEdges } = useMemo(() => {
     const edges = []
     const [rawNodes] = flattenTree(treeData, edges)
     return { initialNodes: layoutNodes(rawNodes, edges), initialEdges: edges }
   }, [])
-
+  
   const [nodes, , onNodesChange] = useNodesState(initialNodes)
   const [edges, , onEdgesChange] = useEdgesState(initialEdges)
-
+  
   return (
     <ReactFlow
-      nodes={nodes}
-      edges={edges}
-      onNodesChange={onNodesChange}
-      onEdgesChange={onEdgesChange}
-      nodeTypes={nodeTypes}
-      edgeTypes={edgeTypes}
-      defaultEdgeOptions={defaultEdgeOptions}
-      connectionLineStyle={connectionLineStyle}
-      fitView
-      fitViewOptions={{
-        padding: miniature ? 0.6 : 0.25,
-      }}
-      minZoom={miniature ? 0.05 : 0.1}
-      maxZoom={miniature ? 0.5 : 3}
-      nodesDraggable={!miniature}
-      nodesConnectable={false}
-      panOnDrag={!miniature}
-      zoomOnScroll={!miniature}
-      panOnScroll={false}
-      colorMode="dark"
-      proOptions={{ hideAttribution: true }}
+    nodes={nodes}
+    edges={edges}
+    onNodesChange={onNodesChange}
+    onEdgesChange={onEdgesChange}
+    nodeTypes={nodeTypes}
+    edgeTypes={edgeTypes}
+    defaultEdgeOptions={defaultEdgeOptions}
+    connectionLineStyle={connectionLineStyle}
+    fitView
+    fitViewOptions={{
+      padding: miniature ? 0.6 : 0.25,
+    }}
+    minZoom={miniature ? 0.05 : 0.1}
+    maxZoom={miniature ? 0.5 : 3}
+    nodesDraggable={!miniature}
+    nodesConnectable={false}
+    panOnDrag={!miniature}
+    zoomOnScroll={!miniature}
+    panOnScroll={false}
+    colorMode="dark"
+    proOptions={{ hideAttribution: true }}
     >
       {!miniature && <Background variant="dots" gap={20} size={1.5} color="#333" />}
     </ReactFlow>
   )
 }
 
-export default function TreePanel() {
+export default function TreePanel({headId}) {
   const [fullscreen, setFullscreen] = useState(false)
-
+  const [treeData,setTree]=useState(sample)
+  
   const close = useCallback(() => setFullscreen(false), [])
-
+  
   useEffect(() => {
     if (!fullscreen) return
     const handler = (e) => { if (e.key === 'Escape') setFullscreen(false) }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
   }, [fullscreen])
-
+  
+  history.getTree(headId).then(data=>console.log(data)).catch(err=>console.log(err))
+  
   return (
     <>
       {fullscreen && <div className="tree-panel-backdrop" onClick={close} />}
@@ -182,7 +186,7 @@ export default function TreePanel() {
           </button>
         </div>
         <div className="tree-container">
-          <FlowCanvas key={fullscreen ? 'full' : 'mini'} miniature={!fullscreen} />
+          <FlowCanvas key={fullscreen ? 'full' : 'mini'} miniature={!fullscreen} treeData={treeData} />
         </div>
       </aside>
     </>
