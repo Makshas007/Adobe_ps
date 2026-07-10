@@ -6,7 +6,7 @@ import ChatWindow from './components/ChatWindow'
 import ImageViewer from './components/ImageViewer'
 import {image, history} from './utilities/indexedDB.js'
 import './App.css'
-import { dataURLtoBlob } from './utilities/type.js'
+import { blobToDataURL, dataURLtoBlob } from './utilities/type.js'
 
 function App() {
   const [imageUrl, setImageUrl] = useState(null)
@@ -23,6 +23,26 @@ function App() {
     setHistoryVersion(v => v + 1)
   }
 
+  const setNode=async(node)=>{
+    setImageHistoryNode(await history.getNode(node));
+    const imgBlob = await image.getImage(imageHistoryNode.imgId);
+    blobToDataURL(imgBlob,res=>setImageUrl(res))
+  }
+
+  const nextNode=async()=>{
+    if(imageHistoryNode?.nextNode.length)return;
+    else if(imageHistoryNode.nextNode.length===1) await setNode( imageHistoryNode.nextNode[0] );
+    else {
+    const i = parseInt(prompt("Enter Index to go to")??1);
+    await  setNode(imageHistoryNode.nextNode[i-1]);
+    }
+  }
+
+  const prevNode=async()=>{
+    if(imageHistoryNode?.prevNode)return;
+    else setNode(imageHistoryNode.prevNode)
+  }
+
   const handleEditComplete = async (dataUri, label) => {
     setImageUrl(dataUri)
     const blob = dataURLtoBlob(dataUri);
@@ -37,6 +57,16 @@ function App() {
       <ToolbarRibbon onUpload={handleUpload} />
       <div className="main-content">
         <ImageViewer imageUrl={imageUrl} />
+        <button
+          onClick={prevNode}
+          disabled={imageHistoryNode!=={}||imageHistoryNode?.prevNode}
+        >Back</button>
+
+        <button
+          onClick={nextNode}
+          disabled={imageHistoryNode!=={}||imageHistoryNode?.nextNode.length}
+        >
+          Front</button>
         <div className="right-column">
           <TreePanel headId={head.id} historyVersion={historyVersion} />
           <ChatWindow imageHistoryNode={imageHistoryNode} onEditComplete={handleEditComplete} />
