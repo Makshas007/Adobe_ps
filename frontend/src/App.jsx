@@ -23,6 +23,12 @@ function App() {
     setHistoryVersion(v => v + 1)
   }
 
+  const load=async()=>{
+    setHead(await history.getNode('43749820-ad1b-4c27-aa9c-579f86508f56'))
+    setImageHistoryNode(await history.getNode('43749820-ad1b-4c27-aa9c-579f86508f56'))
+  }
+  load();
+  
   const setNode = async (nodeId) => {
     if (!nodeId) return
 
@@ -90,7 +96,7 @@ function App() {
         >
           Front</button>
         <div className="right-column">
-          <TreePanel headId={head.id} historyVersion={historyVersion} />
+          <TreePanel headId={head.id} historyVersion={historyVersion} setNode={setNode} currNode={imageHistoryNode} />
           <ChatWindow imageHistoryNode={imageHistoryNode} onEditComplete={handleEditComplete} />
         </div>
       </div>

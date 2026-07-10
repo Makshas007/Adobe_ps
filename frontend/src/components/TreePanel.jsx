@@ -93,46 +93,81 @@ const defaultEdgeOptions = {
 
 const connectionLineStyle = { stroke: '#FF1E8A', strokeWidth: 2, strokeDasharray: '5 5' }
 
-function FlowCanvas({ miniature, treeData }) {
+function FlowCanvas({ miniature, treeData, currNode, setNode }) {
   const { initialNodes, initialEdges } = useMemo(() => {
     const edges = []
     const [rawNodes] = flattenTree(treeData, edges)
     return { initialNodes: layoutNodes(rawNodes, edges), initialEdges: edges }
   }, [treeData])
   
-  const [nodes, , onNodesChange] = useNodesState(initialNodes)
-  const [edges, , onEdgesChange] = useEdgesState(initialEdges)
+  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
+  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
   
+  useEffect(() => {
+    setNodes((nds) => {
+      const currentIds = new Set(nds.map((n) => n.id))
+      const match =
+        initialNodes.length === nds.length &&
+        initialNodes.every((n) => currentIds.has(n.id))
+
+      if (!match) {
+        return initialNodes.map((node) => ({
+          ...node,
+          selected: node.id === currNode?.id,
+        }))
+      }
+
+      return nds.map((node) => ({
+        ...node,
+        selected: node.id === currNode?.id,
+      }))
+    })
+  }, [initialNodes, currNode?.id, setNodes])
+
+  useEffect(() => {
+    setEdges(initialEdges)
+  }, [initialEdges, setEdges])
+
+  const handleNodeClick = useCallback(
+    (event, node) => {
+      if (setNode) {
+        setNode(node.id)
+      }
+    },
+    [setNode]
+  )
+
   return (
     <ReactFlow
-    nodes={nodes}
-    edges={edges}
-    onNodesChange={onNodesChange}
-    onEdgesChange={onEdgesChange}
-    nodeTypes={nodeTypes}
-    edgeTypes={edgeTypes}
-    defaultEdgeOptions={defaultEdgeOptions}
-    connectionLineStyle={connectionLineStyle}
-    fitView
-    fitViewOptions={{
-      padding: miniature ? 0.6 : 0.25,
-    }}
-    minZoom={miniature ? 0.05 : 0.1}
-    maxZoom={miniature ? 0.5 : 3}
-    nodesDraggable={!miniature}
-    nodesConnectable={false}
-    panOnDrag={!miniature}
-    zoomOnScroll={!miniature}
-    panOnScroll={false}
-    colorMode="dark"
-    proOptions={{ hideAttribution: true }}
+      nodes={nodes}
+      edges={edges}
+      onNodesChange={onNodesChange}
+      onEdgesChange={onEdgesChange}
+      nodeTypes={nodeTypes}
+      edgeTypes={edgeTypes}
+      defaultEdgeOptions={defaultEdgeOptions}
+      connectionLineStyle={connectionLineStyle}
+      onNodeClick={handleNodeClick}
+      fitView
+      fitViewOptions={{
+        padding: miniature ? 0.6 : 0.25,
+      }}
+      minZoom={miniature ? 0.05 : 0.1}
+      maxZoom={miniature ? 0.5 : 3}
+      nodesDraggable={!miniature}
+      nodesConnectable={false}
+      panOnDrag={!miniature}
+      zoomOnScroll={!miniature}
+      panOnScroll={false}
+      colorMode="dark"
+      proOptions={{ hideAttribution: true }}
     >
       {!miniature && <Background variant="dots" gap={20} size={1.5} color="#333" />}
     </ReactFlow>
   )
 }
 
-export default function TreePanel({headId, historyVersion}) {
+export default function TreePanel({headId, historyVersion, setNode, currNode}) {
   const [fullscreen, setFullscreen] = useState(false)
   const [treeData,setTree]=useState(null)
   
@@ -188,7 +223,7 @@ export default function TreePanel({headId, historyVersion}) {
         </div>
         <div className="tree-container">
           {treeData ? (
-            <FlowCanvas key={fullscreen ? 'full' : 'mini'} miniature={!fullscreen} treeData={treeData} />
+            <FlowCanvas key={fullscreen ? 'full' : 'mini'} miniature={!fullscreen} treeData={treeData} currNode={currNode} setNode={setNode}/>
           ) : (
             <div style={{ padding: '1rem', color: '#888', fontSize: '0.85rem' }}>
               No edit history yet. Upload an image to get started.
