@@ -12,21 +12,24 @@ function App() {
   const [imageUrl, setImageUrl] = useState(null)
   const [imageHistoryNode, setImageHistoryNode] = useState(null)
   const [head, setHead]=useState({})
+  const [historyVersion, setHistoryVersion] = useState(0)
 
   const handleUpload = async ({ url, filename, file }) => {
     setImageUrl(url)
     const {id} = await image.addImage(file);
-    const headNode = await history.addNode({label:"Uploaded File", time:new Date().toLocaleString(), imageId:id}, null)
+    const headNode = await history.addNode({label:"Uploaded File", time:new Date().toLocaleString(), imageId:id, filename}, null)
     setImageHistoryNode({ ...headNode, filename });
     setHead(headNode)
+    setHistoryVersion(v => v + 1)
   }
 
   const handleEditComplete = async (dataUri, label) => {
     setImageUrl(dataUri)
     const blob = dataURLtoBlob(dataUri);
     const {id} = await image.addImage(blob);
-    const node = await history.addNode({label, time:new Date().toLocaleString(), imageId:id}, imageHistoryNode.id)
+    const node = await history.addNode({label, time:new Date().toLocaleString(), imageId:id, filename: imageHistoryNode.filename}, imageHistoryNode.id)
     setImageHistoryNode({ ...node, filename: imageHistoryNode.filename })
+    setHistoryVersion(v => v + 1)
   }
 
   return (
@@ -35,7 +38,7 @@ function App() {
       <div className="main-content">
         <ImageViewer imageUrl={imageUrl} />
         <div className="right-column">
-          <TreePanel headId={head.id} />
+          <TreePanel headId={head.id} historyVersion={historyVersion} />
           <ChatWindow imageHistoryNode={imageHistoryNode} onEditComplete={handleEditComplete} />
         </div>
       </div>

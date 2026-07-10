@@ -12,21 +12,6 @@ import dagre from 'dagre'
 import BaseNode from './BaseNode'
 import { history } from '../utilities/indexedDB'
 
-const sample={
-  id: '1', label: 'Open Image', time: '2:30 PM',
-  children: [
-    { id: '2', label: 'Crop', time: '2:31 PM' },
-    { id: '3', label: 'Adjust Brightness', time: '2:32 PM' },
-    {
-      id: '4', label: 'Add Filter', time: '2:33 PM',
-      children: [
-        { id: '5', label: 'Resize', time: '2:34 PM' },
-        { id: '6', label: 'Apply Sepia', time: '2:35 PM' },
-      ],
-    },
-  ],
-}
-
 function flattenTree(node, edges) {
   const nodes = []
   const children = node.children || []
@@ -147,9 +132,9 @@ function FlowCanvas({ miniature, treeData }) {
   )
 }
 
-export default function TreePanel({headId}) {
+export default function TreePanel({headId, historyVersion}) {
   const [fullscreen, setFullscreen] = useState(false)
-  const [treeData,setTree]=useState(sample)
+  const [treeData,setTree]=useState(null)
   
   const close = useCallback(() => setFullscreen(false), [])
   
@@ -166,20 +151,17 @@ export default function TreePanel({headId}) {
     history.getTree(headId)
       .then((data) => {
         if (!cancelled) {
-          setTree(data ?? sample)
+          setTree(data)
         }
       })
       .catch((err) => {
         console.error(err)
-        if (!cancelled) {
-          setTree(sample)
-        }
       })
 
     return () => {
       cancelled = true
     }
-  }, [headId])
+  }, [headId, historyVersion])
   
   return (
     <>
@@ -205,7 +187,13 @@ export default function TreePanel({headId}) {
           </button>
         </div>
         <div className="tree-container">
-          <FlowCanvas key={fullscreen ? 'full' : 'mini'} miniature={!fullscreen} treeData={treeData} />
+          {treeData ? (
+            <FlowCanvas key={fullscreen ? 'full' : 'mini'} miniature={!fullscreen} treeData={treeData} />
+          ) : (
+            <div style={{ padding: '1rem', color: '#888', fontSize: '0.85rem' }}>
+              No edit history yet. Upload an image to get started.
+            </div>
+          )}
         </div>
       </aside>
     </>

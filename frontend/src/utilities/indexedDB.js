@@ -38,8 +38,6 @@ const buildNodeTree = async (head) => {
     return { ...node, children };
 };
 
-const tree = async (head) => buildNodeTree(head);
-
 const image = {
     addImage: (blob) => {
         return new Promise((resolve, reject) => {
