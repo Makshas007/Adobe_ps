@@ -113,7 +113,7 @@ function FlowCanvas({ miniature, treeData }) {
     const edges = []
     const [rawNodes] = flattenTree(treeData, edges)
     return { initialNodes: layoutNodes(rawNodes, edges), initialEdges: edges }
-  }, [])
+  }, [treeData])
   
   const [nodes, , onNodesChange] = useNodesState(initialNodes)
   const [edges, , onEdgesChange] = useEdgesState(initialEdges)
@@ -160,9 +160,26 @@ export default function TreePanel({headId}) {
     return () => window.removeEventListener('keydown', handler)
   }, [fullscreen])
   
-  useEffect(()=>{
-    history.getTree(headId).then(data=>{console.log(data); setTree(data??{})}).catch(err=>console.log(err))
-  },[])
+  useEffect(() => {
+    let cancelled = false
+
+    history.getTree(headId)
+      .then((data) => {
+        if (!cancelled) {
+          setTree(data ?? sample)
+        }
+      })
+      .catch((err) => {
+        console.error(err)
+        if (!cancelled) {
+          setTree(sample)
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [headId])
   
   return (
     <>

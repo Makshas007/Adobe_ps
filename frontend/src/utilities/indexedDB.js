@@ -20,8 +20,6 @@ request2.onupgradeneeded = event => {
 };
 request2.onsuccess = event => { HistoryDB = event.target.result; };
 
-// FIXED: Leaf nodes (node.nextNode.length == 0) were previously being dropped completely. 
-// Now it gracefully yields the node while accurately halting deeper recursion.
 const buildNodeTree = async (head) => {
     if (!head) return null;
     const node = await history.getNode(head);
