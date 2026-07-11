@@ -1,33 +1,73 @@
-import { useState, useRef, useEffect } from 'react'
-import {image, history} from '../utilities/indexedDB.js'
-import { dataURLtoBlob } from '../utilities/type.js'
+import { useState, useEffect } from 'react'
 
-export default function ChatWindow({ imageFilename, imageHistoryNode, onEditComplete }) {
+export default function ChatWindow({ imageHistoryNode, head, onEditComplete }) {
   const [messages, setMessages] = useState([
     { role: 'assistant', text: 'Hello! I can help you edit this image. Try asking me to crop, resize, or apply a filter.' },
   ])
   const [input, setInput] = useState('')
-  const [isLoading, setIsLoading] = useState(false)
-  const messagesEndRef = useRef(null)
 
+  // Load chat messages when active head changes
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, isLoading])
+    if (!head || !head.id) {
+      setMessages([
+        { role: 'assistant', text: 'Hello! I can help you edit this image. Try asking me to crop, resize, or apply a filter.' },
+      ])
+      return
+    }
+
+    const chats = JSON.parse(localStorage.getItem('adobe_mock_ps_chats') || '{}')
+    const currentChat = chats[head.id]
+
+    if (currentChat) {
+      setMessages(currentChat.messages)
+    } else {
+      const initialMessages = [
+        { role: 'assistant', text: 'Hello! I can help you edit this image. Try asking me to crop, resize, or apply a filter.' },
+      ]
+      chats[head.id] = {
+        id: head.id,
+        title: imageHistoryNode?.filename || head.filename || 'Untitled Image',
+        messages: initialMessages,
+        timestamp: Date.now()
+      }
+      localStorage.setItem('adobe_mock_ps_chats', JSON.stringify(chats))
+      setMessages(initialMessages)
+    }
+  }, [head?.id])
+
+  const saveChats = (newMessages) => {
+    if (!head || !head.id) return
+    const chats = JSON.parse(localStorage.getItem('adobe_mock_ps_chats') || '{}')
+    if (!chats[head.id]) {
+      chats[head.id] = {
+        id: head.id,
+        title: imageHistoryNode?.filename || head.filename || 'Untitled Image',
+        messages: [],
+        timestamp: Date.now()
+      }
+    }
+    chats[head.id].messages = newMessages
+    chats[head.id].timestamp = Date.now()
+    localStorage.setItem('adobe_mock_ps_chats', JSON.stringify(chats))
+  }
 
   async function handleSend(e) {
     e.preventDefault()
-    if (!input.trim() || !imageHistoryNode?.imageId || isLoading) return
+    if (!input.trim() || !imageHistoryNode) return
 
     const prompt = input
-    setMessages((prev) => [...prev, { role: 'user', text: prompt }])
+    setMessages((prev) => {
+      const updated = [...prev, { role: 'user', text: prompt }]
+      saveChats(updated)
+      return updated
+    })
     setInput('')
-    setIsLoading(true)
 
     try {
       const res = await fetch('/edit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt, image: imageFilename }),
+        body: JSON.stringify({ prompt, image: imageHistoryNode.filename }),
       })
       if (!res.ok) {
         let errorMsg = 'Edit failed. Please try again.'
@@ -35,22 +75,33 @@ export default function ChatWindow({ imageFilename, imageHistoryNode, onEditComp
             const errData = await res.json()
             errorMsg = errData.detail?.detail || errData.detail || errorMsg
         } catch(e) {}
-        setMessages((prev) => [...prev, { role: 'assistant', text: `Error: ${errorMsg}` }])
+        setMessages((prev) => {
+          const updated = [...prev, { role: 'assistant', text: `Error: ${errorMsg}` }]
+          saveChats(updated)
+          return updated
+        })
         return
       }
 
       const data = await res.json()
       const dataUri = `data:image/png;base64,${data.final_image}`
-      let label=''
+      let label = ''
       data.steps.forEach(
         (step, i) => label += (i + 1 === data.steps.length) ? step.operation : step.operation + ' -> '
       )
-      onEditComplete(dataUri, label, imageHistoryNode.id)
-      setMessages((prev) => [...prev, { role: 'assistant', text: `Applied: ${prompt}` }])
+      onEditComplete(dataUri, label)
+      setMessages((prev) => {
+        const updated = [...prev, { role: 'assistant', text: `Applied: ${prompt}` }]
+        saveChats(updated)
+        return updated
+      })
     } catch (err) {
-      setMessages((prev) => [...prev, { role: 'assistant', text: 'Edit failed. Is the backend running?' }])
-    } finally {
-      setIsLoading(false)
+      console.error(err)
+      setMessages((prev) => {
+        const updated = [...prev, { role: 'assistant', text: 'Edit failed. Is the backend running?' }]
+        saveChats(updated)
+        return updated
+      })
     }
   }
 
@@ -63,24 +114,16 @@ export default function ChatWindow({ imageFilename, imageHistoryNode, onEditComp
             {msg.text}
           </div>
         ))}
-        {isLoading && (
-          <div className="chat-message assistant typing-indicator">
-            <span>.</span><span>.</span><span>.</span>
-          </div>
-        )}
-        <div ref={messagesEndRef} />
       </div>
       <form className="chat-input" onSubmit={handleSend}>
         <input
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder={imageHistoryNode ? (isLoading ? "Editing..." : "Ask me to edit the image...") : "Upload an image first"}
-          disabled={!imageHistoryNode || isLoading}
+          placeholder={imageHistoryNode ? "Ask me to edit the image..." : "Upload an image first"}
+          disabled={!imageHistoryNode}
         />
-        <button type="submit" disabled={!imageHistoryNode || isLoading || !input.trim()}>
-          {isLoading ? "Wait" : "Send"}
-        </button>
+        <button type="submit" disabled={!imageHistoryNode}>Send</button>
       </form>
     </aside>
   )

@@ -10,7 +10,7 @@ import {
 import '@xyflow/react/dist/style.css'
 import dagre from 'dagre'
 import BaseNode from './BaseNode'
-import { history } from '../utilities/indexedDB.js'
+import { history } from '../utilities/indexedDB'
 
 function flattenTree(node, edges) {
   const nodes = []
@@ -86,36 +86,56 @@ function HistoryEdge({
 
 const nodeTypes = { historyNode: HistoryNode }
 const edgeTypes = { historyEdge: HistoryEdge }
-
 const defaultEdgeOptions = {
   type: 'historyEdge',
 }
 
+
 const connectionLineStyle = { stroke: '#FF1E8A', strokeWidth: 2, strokeDasharray: '5 5' }
 
-function FlowCanvas({ miniature, treeData }) {
-  const [nodes, setNodes, onNodesChange] = useNodesState([])
-  const [edges, setEdges, onEdgesChange] = useEdgesState([])
-  const [rfInstance, setRfInstance] = useState(null)
+function FlowCanvas({ miniature, treeData, currNode, setNode }) {
+  const { initialNodes, initialEdges } = useMemo(() => {
+    const edges = []
+    const [rawNodes] = flattenTree(treeData, edges)
+    return { initialNodes: layoutNodes(rawNodes, edges), initialEdges: edges }
+  }, [treeData])
+  
+  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
+  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
+  
+  useEffect(() => {
+    setNodes((nds) => {
+      const currentIds = new Set(nds.map((n) => n.id))
+      const match =
+        initialNodes.length === nds.length &&
+        initialNodes.every((n) => currentIds.has(n.id))
+
+      if (!match) {
+        return initialNodes.map((node) => ({
+          ...node,
+          selected: node.id === currNode?.id,
+        }))
+      }
+
+      return nds.map((node) => ({
+        ...node,
+        selected: node.id === currNode?.id,
+      }))
+    })
+  }, [initialNodes, currNode?.id, setNodes])
 
   useEffect(() => {
-    if (!treeData) {
-      setNodes([]);
-      setEdges([]);
-      return;
-    }
-    const newEdges = []
-    const [rawNodes] = flattenTree(treeData, newEdges)
-    const layoutedNodes = layoutNodes(rawNodes, newEdges)
-    setNodes(layoutedNodes)
-    setEdges(newEdges)
-  }, [treeData, setNodes, setEdges])
+    setEdges(initialEdges)
+  }, [initialEdges, setEdges])
 
-  useEffect(() => {
-    if (rfInstance) {
-        setTimeout(() => rfInstance.fitView({ padding: miniature ? 0.6 : 0.25 }), 50);
-    }
-  }, [miniature, treeData, rfInstance]);
+  const handleNodeClick = useCallback(
+    (event, node) => {
+      if (setNode) {
+        setNode(node.id)
+      }
+    },
+    [setNode]
+  )
 
   return (
     <ReactFlow
@@ -123,11 +143,11 @@ function FlowCanvas({ miniature, treeData }) {
       edges={edges}
       onNodesChange={onNodesChange}
       onEdgesChange={onEdgesChange}
-      onInit={setRfInstance}
       nodeTypes={nodeTypes}
       edgeTypes={edgeTypes}
       defaultEdgeOptions={defaultEdgeOptions}
       connectionLineStyle={connectionLineStyle}
+      onNodeClick={handleNodeClick}
       fitView
       fitViewOptions={{
         padding: miniature ? 0.6 : 0.25,
@@ -147,39 +167,37 @@ function FlowCanvas({ miniature, treeData }) {
   )
 }
 
-export default function TreePanel({ currentNode }) {
+export default function TreePanel({headId, historyVersion, setNode, currNode}) {
   const [fullscreen, setFullscreen] = useState(false)
-  const [treeData, setTreeData] = useState(null)
-
+  const [treeData,setTree]=useState(null)
+  
   const close = useCallback(() => setFullscreen(false), [])
-
+  
   useEffect(() => {
     if (!fullscreen) return
     const handler = (e) => { if (e.key === 'Escape') setFullscreen(false) }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
   }, [fullscreen])
-
+  
   useEffect(() => {
-    async function loadTree() {
-        const heads = await history.getHeads();
-        if (heads.length > 0) {
-            // Assume the first head is the root for now, or trace back from currentNode
-            let rootId = heads[0].id;
-            if (currentNode) {
-                let curr = await history.getNode(currentNode.id);
-                while (curr && curr.prevNode) {
-                    curr = await history.getNode(curr.prevNode);
-                }
-                if (curr) rootId = curr.id;
-            }
-            const t = await history.getTree(rootId);
-            setTreeData(t);
-        }
-    }
-    loadTree();
-  }, [currentNode]);
+    let cancelled = false
 
+    history.getTree(headId)
+      .then((data) => {
+        if (!cancelled) {
+          setTree(data)
+        }
+      })
+      .catch((err) => {
+        console.error(err)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [headId, historyVersion])
+  
   return (
     <>
       {fullscreen && <div className="tree-panel-backdrop" onClick={close} />}
@@ -204,7 +222,13 @@ export default function TreePanel({ currentNode }) {
           </button>
         </div>
         <div className="tree-container">
-          <FlowCanvas miniature={!fullscreen} treeData={treeData} />
+          {treeData ? (
+            <FlowCanvas key={fullscreen ? 'full' : 'mini'} miniature={!fullscreen} treeData={treeData} currNode={currNode} setNode={setNode}/>
+          ) : (
+            <div style={{ padding: '1rem', color: '#888', fontSize: '0.85rem' }}>
+              No edit history yet. Upload an image to get started.
+            </div>
+          )}
         </div>
       </aside>
     </>

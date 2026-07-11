@@ -14,9 +14,8 @@ import {
   Download,
   MousePointer,
 } from "lucide-react";
-import {image, history} from '../utilities/indexedDB.js';
 
-export default function ToolbarRibbon({ onUpload }) {
+export default function ToolbarRibbon({ onUpload, onUndo, onRedo, canUndo, canRedo }) {
   const fileInputRef = useRef(null);
 
   const tools = [
@@ -57,9 +56,7 @@ export default function ToolbarRibbon({ onUpload }) {
 
       const data = await res.json();
       const localUrl = URL.createObjectURL(file);
-      const {id} = await image.addImage(file);
-      const headNode = await history.addNode({label:'Uploaded Image', time:Date.now().toLocaleString(), imageId:id},null)
-      onUpload({ url: localUrl, filename: data.filename, historyNode: headNode });
+      onUpload({ url: localUrl, filename: data.filename, file });
     } catch (err) {
       alert("Upload failed. Make sure the backend is running! Error: " + err.message);
       return;
@@ -83,8 +80,25 @@ export default function ToolbarRibbon({ onUpload }) {
       />
       {tools.map((tool) => {
         const Icon = tool.icon;
+        let onClick = undefined;
+        let disabled = false;
+
+        if (tool.label === "Undo") {
+          onClick = onUndo;
+          disabled = !canUndo;
+        } else if (tool.label === "Redo") {
+          onClick = onRedo;
+          disabled = !canRedo;
+        }
+
         return (
-          <button key={tool.label} className="tool-btn" title={tool.label} onClick={() => alert(`${tool.label} tool is coming soon! Use the chat to edit.`)}>
+          <button 
+            key={tool.label} 
+            className="tool-btn" 
+            title={tool.label}
+            onClick={onClick}
+            disabled={disabled}
+          >
             <Icon size={16} />
           </button>
         );
