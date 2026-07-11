@@ -23,11 +23,18 @@ function App() {
     setHistoryVersion(v => v + 1)
   }
 
-  const load=async()=>{
-    setHead(await history.getNode('43749820-ad1b-4c27-aa9c-579f86508f56'))
-    setImageHistoryNode(await history.getNode('43749820-ad1b-4c27-aa9c-579f86508f56'))
+  const load=async(uploadId)=>{
+    try{
+      if(!uploadId)return;
+      setHead(await history.getNode(uploadId))
+      setImageHistoryNode(await history.getNode(uploadId))
+    }
+    catch (err){
+      console.log(err);
+      return;
+    }
   }
-  load();
+  load('43749820-ad1b-4c27-aa9c-579f86508f56');
   
   const setNode = async (nodeId) => {
     if (!nodeId) return
