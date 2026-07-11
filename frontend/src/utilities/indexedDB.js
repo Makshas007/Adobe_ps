@@ -171,6 +171,18 @@ const history = {
         });
     },
 
+    getAllNodes: () => {
+        return new Promise((resolve, reject) => {
+            if (!HistoryDB) return reject(new Error("Database not initialized"));
+            const transaction = HistoryDB.transaction(["nodes"], "readonly");
+            const store = transaction.objectStore("nodes");
+            const request = store.getAll();
+
+            request.onerror = () => reject(new Error("Failed to retrieve nodes"));
+            request.onsuccess = () => resolve(request.result);
+        });
+    },
+
     delete: async (id) => {
         if (!id) return reject(new Error("No ID provided"));
         if (!History) return reject(new Error("Database not initialized"));

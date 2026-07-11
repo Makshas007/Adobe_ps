@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react'
 
 // https://vite.dev/config/
 
-const SERVER = 'http://localhost:8000'
+const SERVER = 'https://periodic-tuition-dominant-join.trycloudflare.com'
 export default defineConfig({
   plugins: [react()],
   server: {

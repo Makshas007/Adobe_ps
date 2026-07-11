@@ -1,5 +1,4 @@
 import { useRef } from "react";
-
 import {
   Upload,
   Scissors,
@@ -16,8 +15,7 @@ import {
   MousePointer,
 } from "lucide-react";
 
-
-export default function ToolbarRibbon({ onUpload }) {
+export default function ToolbarRibbon({ onUpload, onUndo, onRedo, canUndo, canRedo }) {
   const fileInputRef = useRef(null);
 
   const tools = [
@@ -78,8 +76,25 @@ export default function ToolbarRibbon({ onUpload }) {
       />
       {tools.map((tool) => {
         const Icon = tool.icon;
+        let onClick = undefined;
+        let disabled = false;
+
+        if (tool.label === "Undo") {
+          onClick = onUndo;
+          disabled = !canUndo;
+        } else if (tool.label === "Redo") {
+          onClick = onRedo;
+          disabled = !canRedo;
+        }
+
         return (
-          <button key={tool.label} className="tool-btn" title={tool.label}>
+          <button 
+            key={tool.label} 
+            className="tool-btn" 
+            title={tool.label}
+            onClick={onClick}
+            disabled={disabled}
+          >
             <Icon size={16} />
           </button>
         );
