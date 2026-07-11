@@ -183,18 +183,34 @@ const history = {
         });
     },
 
-    delete: async (id) => {
-        if (!id) return reject(new Error("No ID provided"));
-        if (!History) return reject(new Error("Database not initialized"));
+    delete: (id) => {
+        return new Promise(async (resolve, reject) => {
+            if (!id) return reject(new Error("No ID provided"));
+            if (!HistoryDB) return reject(new Error("Database not initialized"));
 
-        const node = await history.getNode(id)
-        const transaction = HistoryDB.transaction(["nodes"], "readwrite");
-        const store = transaction.objectStore("nodes");
-        const request = store.delete(id);
-        // FIXED: Passing raw id directly instead of IDBKeyRange.only({id})
+            try {
+                const node = await history.getNode(id);
+                if (!node) return resolve();
 
-        request.onerror = () => new Error('Could not delete node #' + id)
-        request.onsuccess = async() => node.nextNode.length ? await Promise.all(node.nextNode.map(async id => await history.delete(id))) : null
+                const transaction = HistoryDB.transaction(["nodes"], "readwrite");
+                const store = transaction.objectStore("nodes");
+                const request = store.delete(id);
+
+                request.onerror = () => reject(new Error('Could not delete node #' + id));
+                request.onsuccess = async () => {
+                    if (node.nextNode && node.nextNode.length) {
+                        try {
+                            await Promise.all(node.nextNode.map(async nextId => await history.delete(nextId)));
+                        } catch (err) {
+                            return reject(err);
+                        }
+                    }
+                    resolve();
+                };
+            } catch (err) {
+                reject(err);
+            }
+        });
     }
 
 };
