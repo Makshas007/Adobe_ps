@@ -60,7 +60,7 @@ const image = {
             const transaction = Imgdb.transaction(["images"], "readonly");
             const store = transaction.objectStore("images");
             // FIXED: Passing raw id directly instead of IDBKeyRange.only({id})
-            const request = store.get(id); 
+            const request = store.get(id);
 
             request.onerror = () => reject(new Error(`Failed to retrieve image with id: ${id}`));
             request.onsuccess = () => resolve(request.result?.blob || null);
@@ -75,7 +75,7 @@ const image = {
             const transaction = Imgdb.transaction(["images"], "readwrite");
             const store = transaction.objectStore("images");
             // FIXED: Passing raw id directly instead of IDBKeyRange.only({id})
-            const request = store.delete(id); 
+            const request = store.delete(id);
 
             request.onerror = () => reject(new Error(`Failed to delete image with id: ${id}`));
             request.onsuccess = () => resolve(true);
@@ -143,7 +143,7 @@ const history = {
             const transaction = HistoryDB.transaction(["nodes"], "readonly");
             const store = transaction.objectStore("nodes");
             // FIXED: Passing raw id directly instead of IDBKeyRange.only({id})
-            const request = store.get(id); 
+            const request = store.get(id);
 
             request.onerror = () => reject(new Error(`Failed to retrieve node with id: ${id}`));
             request.onsuccess = () => resolve(request.result || null);
@@ -170,6 +170,34 @@ const history = {
             buildNodeTree(id).then(resolve).catch(reject);
         });
     },
+
+    delete: async (id) => {
+        if (!id) return reject(new Error("No ID provided"));
+        if (!History) return reject(new Error("Database not initialized"));
+
+        const node = await history.getNode(id)
+        const transaction = HistoryDB.transaction(["nodes"], "readwrite");
+        const store = transaction.objectStore("nodes");
+        const request = store.delete(id);
+        // FIXED: Passing raw id directly instead of IDBKeyRange.only({id})
+
+        request.onerror = () => new Error('Could not delete node #' + id)
+        request.onsuccess = async() => node.nextNode.length ? await Promise.all(node.nextNode.map(async id => await history.delete(id))) : null
+    }
+
 };
 
-export { image, history };
+const waitForDB = () => {
+    return new Promise((resolve) => {
+        let attempts = 0;
+        const interval = setInterval(() => {
+            attempts++;
+            if ((Imgdb && HistoryDB) || attempts > 20) {
+                clearInterval(interval);
+                resolve();
+            }
+        }, 50);
+    });
+};
+
+export { image, history, waitForDB };

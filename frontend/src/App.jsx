@@ -1,10 +1,10 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import ToolbarRibbon from './components/ToolbarRibbon'
 import StatusBar from './components/StatusBar'
 import TreePanel from './components/TreePanel'
 import ChatWindow from './components/ChatWindow'
 import ImageViewer from './components/ImageViewer'
-import {image, history} from './utilities/indexedDB.js'
+import {image, history, waitForDB} from './utilities/indexedDB.js'
 import './App.css'
 import { blobToDataURL, dataURLtoBlob } from './utilities/type.js'
 
@@ -19,31 +19,39 @@ function App() {
     const {id} = await image.addImage(file);
     const headNode = await history.addNode({label:"Uploaded File", time:new Date().toLocaleString(), imageId:id, filename}, null)
     setImageHistoryNode({ ...headNode, filename });
-    setHead(headNode)
+    setHead(headNode);
+    localStorage.setItem(headNode,filename)
+    window.history.pushState(null, '', '/'+headNode.id);
     setHistoryVersion(v => v + 1)
   }
 
-  const load=async(uploadId)=>{
-    try{
-      if(!uploadId)return;
-      setHead(await history.getNode(uploadId))
-      setImageHistoryNode(await history.getNode(uploadId))
+  const handleChatNameChange=(chatId,val)=>localStorage.setItem(chatId,val);
+  const handleChatDelete=async(chatId)=>  await history.delete(chatId)  
+
+  useEffect(() => {
+    const initLoad = async () => {
+      try {
+        await waitForDB()
+        const uploadId = location.pathname.split('/')[1];
+        const node = await history.getNode(uploadId)
+        if (node) {
+          setHead(node)
+          await setNode(uploadId)
+        } else {
+        }
+      } catch (err) {
+        console.error("Failed to load initial history:", err)
+      }
     }
-    catch (err){
-      console.log(err);
-      return;
-    }
-  }
-  load('43749820-ad1b-4c27-aa9c-579f86508f56');
+    initLoad()
+  }, [])
   
   const setNode = async (nodeId) => {
     if (!nodeId) return
-
     const nextNodeData = await history.getNode(nodeId)
     if (!nextNodeData) return
 
     setImageHistoryNode(nextNodeData)
-
     if (nextNodeData.imageId) {
       const imgBlob = await image.getImage(nextNodeData.imageId)
       if (imgBlob) {
