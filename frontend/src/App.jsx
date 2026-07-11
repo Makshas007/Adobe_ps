@@ -34,7 +34,7 @@ function App() {
       return;
     }
   }
-  load('43749820-ad1b-4c27-aa9c-579f86508f56');
+  // load('43749820-ad1b-4c27-aa9c-579f86508f56');
   
   const setNode = async (nodeId) => {
     if (!nodeId) return
