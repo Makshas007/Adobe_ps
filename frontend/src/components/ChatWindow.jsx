@@ -43,7 +43,7 @@ export default function ChatWindow({ imageFilename, imageHistoryNode, onEditComp
       const dataUri = `data:image/png;base64,${data.final_image}`
       let label=''
       data.steps.forEach(
-        (e,i) => label += (i + 1 === data.steps.length) ? e : e + ' -> '
+        (step, i) => label += (i + 1 === data.steps.length) ? step.operation : step.operation + ' -> '
       )
       onEditComplete(dataUri, label, imageHistoryNode.id)
       setMessages((prev) => [...prev, { role: 'assistant', text: `Applied: ${prompt}` }])

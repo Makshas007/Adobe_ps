@@ -282,6 +282,7 @@ The Gemini planner maps natural language to structured operations. Here's how pr
 | `segment` | SAM (ViT-Base) | Segments an object by target name; generates a mask (stored in pipeline context) |
 | `remove` | InstructPix2Pix / **SD Inpainting** | Removes the main subject. Uses **masked inpainting** when SAM mask is available from a prior `segment` step; falls back to InstructPix2Pix img2img |
 | `replace_background` | InstructPix2Pix / **SD Inpainting** | Replaces image background. **Inverts** the SAM mask to inpaint only the background area when a mask is available |
+| `remove_background` | rembg | Makes the background transparent. Portraits use `u2net_human_seg` for finer hair and clothing edges; other images use `isnet-general-use`. |
 | `change_style` / `style_transfer` | InstructPix2Pix | Applies artistic style transformation |
 | `upscale` | PIL Bicubic (4×) | Upscales the image (ESRGAN when available) |
 
@@ -584,6 +585,7 @@ Consider adding:
 | `FileNotFoundError: LoRA weights not found` | Check `DIFFUSION_LORA_WEIGHTS` path in `.env` |
 | `Gemini API quota exceeded` | Wait for daily reset or use a different API key |
 | `Image not found` | Upload the image first via `POST /upload`, use the returned `filename` |
+| First portrait background removal is slow | `u2net_human_seg` is downloaded by rembg once (about 170 MB); later requests use the cached model. |
 | Server won't start | Check `uvicorn` log for errors. Common: port in use (`fuser -k 8000/tcp`), missing `.env` |
 
 ---

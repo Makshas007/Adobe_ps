@@ -18,6 +18,35 @@ class OperationHandler:
     def __init__(self, model_manager: ModelManager) -> None:
         self.model_manager = model_manager
 
+    @staticmethod
+    def _is_human_image(image: Image.Image) -> bool:
+        """Detect whether the image contains a human face using OpenCV's cascade classifier.
+
+        This is a lightweight check (~5ms) used to choose the right background
+        removal model and edge-processing strategy.
+        """
+        try:
+            import cv2
+            gray = cv2.cvtColor(np.array(image.convert("RGB")), cv2.COLOR_RGB2GRAY)
+            # Resize for speed if the image is large
+            max_dim = 640
+            h, w = gray.shape[:2]
+            if max(h, w) > max_dim:
+                scale = max_dim / max(h, w)
+                gray = cv2.resize(gray, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
+
+            cascade_path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+            face_cascade = cv2.CascadeClassifier(cascade_path)
+            faces = face_cascade.detectMultiScale(
+                gray, scaleFactor=1.1, minNeighbors=4, minSize=(30, 30)
+            )
+            detected = len(faces) > 0
+            logger.info("Human detection: %s (%d face(s) found)", detected, len(faces))
+            return detected
+        except Exception as exc:
+            logger.warning("Human detection failed, defaulting to non-human path: %s", exc)
+            return False
+
     def handle_segment(
         self,
         image: Image.Image,
@@ -107,87 +136,119 @@ class OperationHandler:
         params: Dict[str, Any],
         context: Optional[Dict[str, Any]] = None,
     ) -> Tuple[Image.Image, Dict[str, Any]]:
-        logger.info("Pipeline step: remove_background (rembg + LAB color-distance hybrid)")
+        is_human = self._is_human_image(image)
+        if is_human:
+            logger.info("Pipeline step: remove_background (human-optimized path)")
+        else:
+            logger.info("Pipeline step: remove_background (general-object path)")
+
         try:
             import rembg
             import numpy as np
             from PIL import ImageFilter
-            
-            session = rembg.new_session("isnet-general-use")
-            
+
+            # ── Choose rembg model based on content type ──────────────────
+            if is_human:
+                # u2net_human_seg is specifically trained for human matting
+                # and produces dramatically better masks around hair, fingers,
+                # and clothing edges compared to isnet-general-use.
+                session = rembg.new_session("u2net_human_seg")
+                logger.info("Using rembg model: u2net_human_seg")
+            else:
+                session = rembg.new_session("isnet-general-use")
+                logger.info("Using rembg model: isnet-general-use")
+
             # Step 1: Get the AI mask from rembg
             result = rembg.remove(
-                image, 
+                image,
                 session=session,
-                post_process_mask=True
+                post_process_mask=True,
             )
-            
-            # Step 2: Detect the background color by sampling the image corners
+            ai_alpha = np.array(result.split()[3])
+
             img_np = np.array(image.convert("RGB")).astype(np.float32)
             h, w = img_np.shape[:2]
-            sample_size = max(10, min(h, w) // 20)
-            corners = np.concatenate([
-                img_np[:sample_size, :sample_size].reshape(-1, 3),
-                img_np[:sample_size, -sample_size:].reshape(-1, 3),
-                img_np[-sample_size:, :sample_size].reshape(-1, 3),
-                img_np[-sample_size:, -sample_size:].reshape(-1, 3),
-            ])
-            bg_color = np.median(corners, axis=0)
-            
-            # Step 3: Calculate perceptual color distance in LAB space
-            # LAB is much better than RGB at detecting subtle differences
-            # like gray text on a pink background
-            def rgb_to_lab(rgb_array):
-                """Convert RGB (0-255 float) to LAB for perceptual distance."""
-                # Normalize to 0-1
-                rgb = rgb_array / 255.0
-                # Linearize (sRGB gamma)
-                mask = rgb > 0.04045
-                rgb = np.where(mask, ((rgb + 0.055) / 1.055) ** 2.4, rgb / 12.92)
-                # To XYZ (D65)
-                x = rgb[..., 0] * 0.4124564 + rgb[..., 1] * 0.3575761 + rgb[..., 2] * 0.1804375
-                y = rgb[..., 0] * 0.2126729 + rgb[..., 1] * 0.7151522 + rgb[..., 2] * 0.0721750
-                z = rgb[..., 0] * 0.0193339 + rgb[..., 1] * 0.1191920 + rgb[..., 2] * 0.9503041
-                # Normalize by D65 white point
-                x, y, z = x / 0.95047, y / 1.0, z / 1.08883
-                # To LAB
-                def f(t):
-                    delta = 6.0 / 29.0
-                    return np.where(t > delta**3, t**(1.0/3.0), t / (3 * delta**2) + 4.0/29.0)
-                fx, fy, fz = f(x), f(y), f(z)
-                L = 116.0 * fy - 16.0
-                a = 500.0 * (fx - fy)
-                b = 200.0 * (fy - fz)
-                return np.stack([L, a, b], axis=-1)
-            
-            img_lab = rgb_to_lab(img_np)
-            bg_lab = rgb_to_lab(bg_color.reshape(1, 1, 3)).reshape(3)
-            
-            # Perceptual distance (Delta E)
-            diff = np.sqrt(np.sum((img_lab - bg_lab) ** 2, axis=2))
-            
-            # Much more aggressive thresholds in LAB space:
-            # DeltaE < 5 is barely noticeable, > 15 is clearly different
-            color_alpha = np.clip((diff - 5.0) / 10.0, 0.0, 1.0) * 255.0
-            color_alpha = color_alpha.astype(np.uint8)
-            
-            # Step 4: Combine AI mask with color-distance mask (take the maximum)
-            ai_alpha = np.array(result.split()[3])
-            combined_alpha = np.maximum(ai_alpha, color_alpha)
-            
-            # Step 5: Dilate the mask by 2px to recover clipped text edges
-            alpha_img = Image.fromarray(combined_alpha, mode="L")
-            alpha_img = alpha_img.filter(ImageFilter.MaxFilter(3))
-            
+
+            if is_human:
+                # ── Human-specific path ───────────────────────────────────
+                # For humans we trust the AI mask entirely and skip the LAB
+                # color-distance mask. The color-distance approach assumes the
+                # foreground is chromatically distant from the background,
+                # which breaks on skin tones close to common bg colors (beige,
+                # light gray, white) and causes body parts to be erased.
+                combined_alpha = ai_alpha
+
+                # Larger dilation (5px) to recover fine hair strands and
+                # clothing fringes that the AI mask clips.
+                alpha_img = Image.fromarray(combined_alpha, mode="L")
+                alpha_img = alpha_img.filter(ImageFilter.MaxFilter(5))
+
+                # Gaussian-feathered edges for a smooth, natural transition
+                # instead of the harsh jagged boundary from binary masking.
+                alpha_img = alpha_img.filter(ImageFilter.GaussianBlur(radius=1.5))
+
+                # Re-threshold to keep the interior fully opaque while only
+                # feathering the border pixels.
+                alpha_np = np.array(alpha_img, dtype=np.float32)
+                alpha_np = np.where(alpha_np > 240, 255.0, alpha_np)
+                alpha_np = np.where(alpha_np < 15, 0.0, alpha_np)
+                alpha_img = Image.fromarray(alpha_np.astype(np.uint8), mode="L")
+            else:
+                # ── General-object path (logos, products) ─────────────────
+                # Unchanged from the original implementation.
+
+                # Step 2: Detect the background color by sampling corners
+                sample_size = max(10, min(h, w) // 20)
+                corners = np.concatenate([
+                    img_np[:sample_size, :sample_size].reshape(-1, 3),
+                    img_np[:sample_size, -sample_size:].reshape(-1, 3),
+                    img_np[-sample_size:, :sample_size].reshape(-1, 3),
+                    img_np[-sample_size:, -sample_size:].reshape(-1, 3),
+                ])
+                bg_color = np.median(corners, axis=0)
+
+                # Step 3: Perceptual color distance in LAB space
+                def rgb_to_lab(rgb_array):
+                    """Convert RGB (0-255 float) to LAB for perceptual distance."""
+                    rgb = rgb_array / 255.0
+                    mask = rgb > 0.04045
+                    rgb = np.where(mask, ((rgb + 0.055) / 1.055) ** 2.4, rgb / 12.92)
+                    x = rgb[..., 0] * 0.4124564 + rgb[..., 1] * 0.3575761 + rgb[..., 2] * 0.1804375
+                    y = rgb[..., 0] * 0.2126729 + rgb[..., 1] * 0.7151522 + rgb[..., 2] * 0.0721750
+                    z = rgb[..., 0] * 0.0193339 + rgb[..., 1] * 0.1191920 + rgb[..., 2] * 0.9503041
+                    x, y, z = x / 0.95047, y / 1.0, z / 1.08883
+
+                    def f(t):
+                        delta = 6.0 / 29.0
+                        return np.where(t > delta**3, t**(1.0/3.0), t / (3 * delta**2) + 4.0/29.0)
+                    fx, fy, fz = f(x), f(y), f(z)
+                    L = 116.0 * fy - 16.0
+                    a = 500.0 * (fx - fy)
+                    b = 200.0 * (fy - fz)
+                    return np.stack([L, a, b], axis=-1)
+
+                img_lab = rgb_to_lab(img_np)
+                bg_lab = rgb_to_lab(bg_color.reshape(1, 1, 3)).reshape(3)
+                diff = np.sqrt(np.sum((img_lab - bg_lab) ** 2, axis=2))
+                color_alpha = np.clip((diff - 5.0) / 10.0, 0.0, 1.0) * 255.0
+                color_alpha = color_alpha.astype(np.uint8)
+
+                # Step 4: Combine AI mask with color-distance mask
+                combined_alpha = np.maximum(ai_alpha, color_alpha)
+
+                # Step 5: Dilate by 2px to recover clipped text edges
+                alpha_img = Image.fromarray(combined_alpha, mode="L")
+                alpha_img = alpha_img.filter(ImageFilter.MaxFilter(3))
+
+            # ── Common final assembly ─────────────────────────────────────
             # Step 6: Assemble final RGBA using original image colors
             orig_rgba = image.convert("RGBA")
             r_orig, g_orig, b_orig, _ = orig_rgba.split()
             result = Image.merge("RGBA", (r_orig, g_orig, b_orig, alpha_img))
-            
+
             # Step 7: Auto-crop transparent borders for a tight result
             bbox = result.getbbox()
             if bbox:
-                # Add a small padding (2% of dimensions)
                 pad_x = max(10, int(w * 0.02))
                 pad_y = max(10, int(h * 0.02))
                 crop_box = (
@@ -197,7 +258,7 @@ class OperationHandler:
                     min(h, bbox[3] + pad_y),
                 )
                 result = result.crop(crop_box)
-            
+
             return result, {}
         except ImportError:
             logger.warning("rembg is not installed. Falling back to SAM (which has aliased edges).")
@@ -208,16 +269,16 @@ class OperationHandler:
                     context = {}
                 if "mask" in mask_details:
                     context["mask"] = Image.open(mask_details["mask"])
-                
+
             mask = context.get("mask")
             if mask is None:
                 return image, {}
-                
+
             # Convert image to RGBA
             image_rgba = image.convert("RGBA")
             # Ensure mask is L mode and same size
             mask_l = mask.convert("L").resize(image_rgba.size)
-            
+
             # Apply mask to alpha channel
             image_rgba.putalpha(mask_l)
             return image_rgba, {}

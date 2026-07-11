@@ -5,7 +5,8 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.api import edit, health, upload
 from app.config import settings
@@ -78,12 +79,27 @@ app.include_router(health.router)
 app.include_router(upload.router)
 app.include_router(edit.router)
 
+frontend_dist = Path(__file__).parent.parent.parent / "frontend" / "dist"
 
-@app.get("/")
-async def root():
-    return {
-        "name": "Adobe Mock PS Backend",
-        "version": "1.0.0",
-        "docs": "/docs",
-        "health": "/health",
-    }
+if frontend_dist.exists():
+    app.mount("/assets", StaticFiles(directory=frontend_dist / "assets"), name="assets")
+    
+    @app.get("/{full_path:path}")
+    async def serve_frontend(full_path: str):
+        # Allow requests to /docs, /openapi.json, etc. to fall through? 
+        # Actually FastAPI evaluates routes in order of addition. 
+        # Since this is the last route, it acts as a catch-all.
+        file_path = frontend_dist / full_path
+        if file_path.is_file():
+            return FileResponse(file_path)
+        return FileResponse(frontend_dist / "index.html")
+else:
+    @app.get("/")
+    async def root():
+        return {
+            "name": "Adobe Mock PS Backend",
+            "version": "1.0.0",
+            "docs": "/docs",
+            "health": "/health",
+            "note": "Frontend build not found. Run 'npm run build' in frontend directory."
+        }
