@@ -49,12 +49,16 @@ export default function ToolbarRibbon({ onUpload, onUndo, onRedo, canUndo, canRe
         method: "POST",
         body: formData,
       });
-      if (!res.ok) return;
+      if (!res.ok) {
+        alert("Backend returned error: " + res.statusText);
+        return;
+      }
 
       const data = await res.json();
       const localUrl = URL.createObjectURL(file);
       onUpload({ url: localUrl, filename: data.filename, file });
-    } catch {
+    } catch (err) {
+      alert("Upload failed. Make sure the backend is running! Error: " + err.message);
       return;
     }
 

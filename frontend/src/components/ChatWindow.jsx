@@ -70,8 +70,13 @@ export default function ChatWindow({ imageHistoryNode, head, onEditComplete }) {
         body: JSON.stringify({ prompt, image: imageHistoryNode.filename }),
       })
       if (!res.ok) {
+        let errorMsg = 'Edit failed. Please try again.'
+        try {
+            const errData = await res.json()
+            errorMsg = errData.detail?.detail || errData.detail || errorMsg
+        } catch(e) {}
         setMessages((prev) => {
-          const updated = [...prev, { role: 'assistant', text: 'Edit failed. Please try again.' }]
+          const updated = [...prev, { role: 'assistant', text: `Error: ${errorMsg}` }]
           saveChats(updated)
           return updated
         })
@@ -82,7 +87,7 @@ export default function ChatWindow({ imageHistoryNode, head, onEditComplete }) {
       const dataUri = `data:image/png;base64,${data.final_image}`
       let label = ''
       data.steps.forEach(
-        (e, i) => label += i + 1 === data.steps.length ? e.operation : e.operation + ' -> '
+        (step, i) => label += (i + 1 === data.steps.length) ? step.operation : step.operation + ' -> '
       )
       onEditComplete(dataUri, label)
       setMessages((prev) => {

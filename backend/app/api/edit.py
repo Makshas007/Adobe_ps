@@ -46,6 +46,7 @@ def _get_upload_path(filename: str, settings: Settings) -> Path:
 
 
 @router.post("/edit", response_model=EditResponse, status_code=status.HTTP_200_OK)
+@router.post("/edit/", response_model=EditResponse, status_code=status.HTTP_200_OK)
 async def edit_image(
     request: EditRequest,
     planner: Planner = Depends(get_planner),
