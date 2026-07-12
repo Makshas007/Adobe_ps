@@ -196,12 +196,12 @@ function App() {
     await setNode(imageHistoryNode.prevNode)
   }
 
-  const handleEditComplete = async (dataUri, label) => {
+  const handleEditComplete = async (dataUri, label, filename) => {
     setImageUrl(dataUri)
     const blob = dataURLtoBlob(dataUri);
     const { id } = await image.addImage(blob);
-    const node = await history.addNode({ label, time: new Date().toLocaleString(), imageId: id, filename: imageHistoryNode.filename }, imageHistoryNode.id)
-    setImageHistoryNode({ ...node, filename: imageHistoryNode.filename })
+    const node = await history.addNode({ label, time: new Date().toLocaleString(), imageId: id, filename }, imageHistoryNode.id)
+    setImageHistoryNode(node)
     setHistoryVersion(v => v + 1)
   }
 

@@ -89,7 +89,7 @@ export default function ChatWindow({ imageHistoryNode, head, onEditComplete }) {
       data.steps.forEach(
         (step, i) => label += (i + 1 === data.steps.length) ? step.operation : step.operation + ' -> '
       )
-      onEditComplete(dataUri, label)
+      onEditComplete(dataUri, label, data.filename)
       setMessages((prev) => {
         const updated = [...prev, { role: 'assistant', text: `Applied: ${prompt}` }]
         saveChats(updated)
