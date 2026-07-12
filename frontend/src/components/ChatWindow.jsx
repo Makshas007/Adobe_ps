@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react'
+import { image } from '../utilities/indexedDB'
+import { blobToDataURL } from '../utilities/type'
 
 export default function ChatWindow({ imageHistoryNode, head, onEditComplete }) {
   const [messages, setMessages] = useState([
@@ -51,6 +53,21 @@ export default function ChatWindow({ imageHistoryNode, head, onEditComplete }) {
     localStorage.setItem('adobe_mock_ps_chats', JSON.stringify(chats))
   }
 
+  const img_by_id = (id) => {
+    return new Promise((resolve, reject) => {
+      image
+        .getImage(id)
+        .then((res) => {
+          try {
+            blobToDataURL(res, (dat) => resolve(dat));
+          } catch (err) {
+            reject(err);
+          }
+        })
+        .catch((err) => reject(err));
+    });
+  };
+
   async function handleSend(e) {
     e.preventDefault()
     if (!input.trim() || !imageHistoryNode) return
@@ -67,7 +84,7 @@ export default function ChatWindow({ imageHistoryNode, head, onEditComplete }) {
       const res = await fetch('/edit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt, image: imageHistoryNode.filename }),
+        body: JSON.stringify({ prompt, image: await img_by_id(imageHistoryNode.imgId) }),
       })
       if (!res.ok) {
         let errorMsg = 'Edit failed. Please try again.'
@@ -89,7 +106,7 @@ export default function ChatWindow({ imageHistoryNode, head, onEditComplete }) {
       data.steps.forEach(
         (step, i) => label += (i + 1 === data.steps.length) ? step.operation : step.operation + ' -> '
       )
-      onEditComplete(dataUri, label, data.filename)
+      onEditComplete(dataUri, label, data.filename||'Untitled_Img.jpg')
       setMessages((prev) => {
         const updated = [...prev, { role: 'assistant', text: `Applied: ${prompt}` }]
         saveChats(updated)
