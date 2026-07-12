@@ -1,6 +1,4 @@
 import { useState, useEffect } from 'react'
-import { image } from '../utilities/indexedDB'
-import { blobToDataURL } from '../utilities/type'
 
 export default function ChatWindow({ imageHistoryNode, head, onEditComplete }) {
   const [messages, setMessages] = useState([
@@ -28,7 +26,7 @@ export default function ChatWindow({ imageHistoryNode, head, onEditComplete }) {
       ]
       chats[head.id] = {
         id: head.id,
-        title: imageHistoryNode?.filename || head.filename || 'Untitled Image',
+        title: localStorage.getItem(head.id) || 'Untitled Image',
         messages: initialMessages,
         timestamp: Date.now()
       }
@@ -43,7 +41,7 @@ export default function ChatWindow({ imageHistoryNode, head, onEditComplete }) {
     if (!chats[head.id]) {
       chats[head.id] = {
         id: head.id,
-        title: imageHistoryNode?.filename || head.filename || 'Untitled Image',
+        title: localStorage.getItem(head.id) || 'Untitled Image',
         messages: [],
         timestamp: Date.now()
       }
@@ -52,21 +50,6 @@ export default function ChatWindow({ imageHistoryNode, head, onEditComplete }) {
     chats[head.id].timestamp = Date.now()
     localStorage.setItem('adobe_mock_ps_chats', JSON.stringify(chats))
   }
-
-  const img_by_id = (id) => {
-    return new Promise((resolve, reject) => {
-      image
-        .getImage(id)
-        .then((res) => {
-          try {
-            blobToDataURL(res, (dat) => resolve(dat));
-          } catch (err) {
-            reject(err);
-          }
-        })
-        .catch((err) => reject(err));
-    });
-  };
 
   async function handleSend(e) {
     e.preventDefault()
@@ -84,14 +67,14 @@ export default function ChatWindow({ imageHistoryNode, head, onEditComplete }) {
       const res = await fetch('/edit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt, image: await img_by_id(imageHistoryNode.imgId) }),
+        body: JSON.stringify({ prompt, image: localStorage.getItem(imageHistoryNode.id) || 'Untitled.jpg' }),
       })
       if (!res.ok) {
         let errorMsg = 'Edit failed. Please try again.'
         try {
-            const errData = await res.json()
-            errorMsg = errData.detail?.detail || errData.detail || errorMsg
-        } catch(e) {}
+          const errData = await res.json()
+          errorMsg = errData.detail?.detail || errData.detail || errorMsg
+        } catch (e) {}
         setMessages((prev) => {
           const updated = [...prev, { role: 'assistant', text: `Error: ${errorMsg}` }]
           saveChats(updated)
@@ -106,7 +89,7 @@ export default function ChatWindow({ imageHistoryNode, head, onEditComplete }) {
       data.steps.forEach(
         (step, i) => label += (i + 1 === data.steps.length) ? step.operation : step.operation + ' -> '
       )
-      onEditComplete(dataUri, label, data.filename||'Untitled_Img.jpg')
+      onEditComplete(dataUri, label, data.filename || 'Untitled_Img.jpg')
       setMessages((prev) => {
         const updated = [...prev, { role: 'assistant', text: `Applied: ${prompt}` }]
         saveChats(updated)

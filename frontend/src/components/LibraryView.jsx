@@ -33,7 +33,7 @@ export default function LibraryView({ onSelectNode, currentHeadId }) {
             id: img.id,
             url: objectUrl,
             nodeId: associatedNode?.id || null,
-            filename: associatedNode?.filename || 'Untitled File',
+            filename: (associatedNode?.id ? localStorage.getItem(associatedNode.id) : null) || 'Untitled File',
             label: associatedNode?.label || 'Edited Image',
             time: associatedNode?.time || 'Unknown Date',
             headId: associatedNode?.prevNode ? null : associatedNode?.id

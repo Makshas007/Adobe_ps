@@ -20,9 +20,10 @@ function App() {
   const handleUpload = async ({ url, filename, file }) => {
     setImageUrl(url)
     const { id } = await image.addImage(file);
-    const headNode = await history.addNode({ label: "Uploaded File", time: new Date().toLocaleString(), imageId: id, filename }, null)
-    setImageHistoryNode({ ...headNode, filename });
+    const headNode = await history.addNode({ label: "Uploaded File", time: new Date().toLocaleString(), imageId: id }, null)
+    setImageHistoryNode(headNode);
     setHead(headNode);
+    localStorage.setItem(headNode.id, filename)
     const chats = JSON.parse(localStorage.getItem('adobe_mock_ps_chats') || '{}')
     chats[headNode.id] = {
       id: headNode.id,
@@ -200,7 +201,8 @@ function App() {
     setImageUrl(dataUri)
     const blob = dataURLtoBlob(dataUri);
     const { id } = await image.addImage(blob);
-    const node = await history.addNode({ label, time: new Date().toLocaleString(), imageId: id, filename }, imageHistoryNode.id)
+    const node = await history.addNode({ label, time: new Date().toLocaleString(), imageId: id }, imageHistoryNode.id)
+    localStorage.setItem(node.id, filename)
     setImageHistoryNode(node)
     setHistoryVersion(v => v + 1)
   }
