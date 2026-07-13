@@ -10,26 +10,30 @@ import {
   Square,
   Undo2,
   Redo2,
-  Save,
   Download,
   MousePointer,
 } from "lucide-react";
 
-export default function ToolbarRibbon({ onUpload, onUndo, onRedo, canUndo, canRedo }) {
+export default function ToolbarRibbon({
+  onUpload, onUndo, onRedo, canUndo, canRedo,
+  activeTool, setActiveTool, hasImage,
+}) {
   const fileInputRef = useRef(null);
 
   const tools = [
-    { label: "Crop", icon: Scissors },
+    { label: "Select", icon: MousePointer, shortcut: "V" },
+    { label: "Crop", icon: Scissors, shortcut: "C" },
     { label: "Resize", icon: MoveHorizontal },
     { label: "Filter", icon: Sparkles },
-    { label: "Brush", icon: Brush },
-    { label: "Eraser", icon: Eraser },
-    { label: "Select", icon: MousePointer },
-    { label: "Text", icon: Type },
-    { label: "Shape", icon: Square },
-    { label: "Undo", icon: Undo2 },
-    { label: "Redo", icon: Redo2 },
-    { label: "Save", icon: Save },
+    { label: "Brush", icon: Brush, shortcut: "B" },
+    { label: "Eraser", icon: Eraser, shortcut: "E" },
+    { label: "Text", icon: Type, shortcut: "T" },
+    { label: "Shape", icon: Square, shortcut: "U" },
+  ];
+
+  const actions = [
+    { label: "Undo", icon: Undo2, shortcut: "Ctrl+Z" },
+    { label: "Redo", icon: Redo2, shortcut: "Ctrl+Y" },
     { label: "Export", icon: Download },
   ];
 
@@ -53,7 +57,6 @@ export default function ToolbarRibbon({ onUpload, onUndo, onRedo, canUndo, canRe
         alert("Backend returned error: " + res.statusText);
         return;
       }
-
       const data = await res.json();
       const localUrl = URL.createObjectURL(file);
       onUpload({ url: localUrl, filename: data.filename, file });
@@ -61,13 +64,12 @@ export default function ToolbarRibbon({ onUpload, onUndo, onRedo, canUndo, canRe
       alert("Upload failed. Make sure the backend is running! Error: " + err.message);
       return;
     }
-
     e.target.value = "";
   };
 
   return (
     <header className="toolbar-ribbon">
-      <button className="tool-btn" onClick={handleUploadClick} title="Upload">
+      <button className="tool-btn" onClick={handleUploadClick} title="Upload Image">
         <Upload size={16} />
       </button>
       <span className="toolbar-separator" />
@@ -80,22 +82,57 @@ export default function ToolbarRibbon({ onUpload, onUndo, onRedo, canUndo, canRe
       />
       {tools.map((tool) => {
         const Icon = tool.icon;
+        const isActive = activeTool === tool.label.toLowerCase() ||
+          (tool.label === 'Shape' && activeTool === 'rect') ||
+          (tool.label === 'Shape' && activeTool === 'circle') ||
+          (tool.label === 'Shape' && activeTool === 'line');
+
+        return (
+          <button
+            key={tool.label}
+            className={`tool-btn ${isActive ? 'tool-btn--active' : ''}`}
+            title={`${tool.label}${tool.shortcut ? ` (${tool.shortcut})` : ''}`}
+            onClick={() => {
+              if (tool.label === 'Select') setActiveTool('select');
+              else if (tool.label === 'Brush') setActiveTool('brush');
+              else if (tool.label === 'Eraser') setActiveTool('eraser');
+              else if (tool.label === 'Text') setActiveTool('text');
+              else if (tool.label === 'Shape') setActiveTool('rect');
+              else if (tool.label === 'Crop') setActiveTool('crop');
+              else if (tool.label === 'Resize') setActiveTool('resize');
+              else if (tool.label === 'Filter') setActiveTool('filter');
+            }}
+            disabled={!hasImage && tool.label !== 'Undo' && tool.label !== 'Redo'}
+          >
+            <Icon size={16} />
+          </button>
+        );
+      })}
+      <span className="toolbar-separator" />
+      {actions.map((action) => {
+        const Icon = action.icon;
         let onClick = undefined;
         let disabled = false;
 
-        if (tool.label === "Undo") {
+        if (action.label === "Undo") {
           onClick = onUndo;
           disabled = !canUndo;
-        } else if (tool.label === "Redo") {
+        } else if (action.label === "Redo") {
           onClick = onRedo;
           disabled = !canRedo;
+        } else if (action.label === "Export") {
+          onClick = () => {
+            const event = new CustomEvent('canvas-export')
+            window.dispatchEvent(event)
+          }
+          disabled = !hasImage;
         }
 
         return (
-          <button 
-            key={tool.label} 
-            className="tool-btn" 
-            title={tool.label}
+          <button
+            key={action.label}
+            className="tool-btn"
+            title={`${action.label}${action.shortcut ? ` (${action.shortcut})` : ''}`}
             onClick={onClick}
             disabled={disabled}
           >

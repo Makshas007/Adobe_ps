@@ -1,10 +1,13 @@
-export default function StatusBar() {
+export default function StatusBar({ zoom, imageDimensions, cursorPos, activeTool, objectCount }) {
   return (
     <footer className="status-bar">
-      <span>Zoom: 100%</span>
-      <span>Dimensions: 1920 x 1080</span>
-      <span>Layer: Background</span>
-      <span>History: 3 operations</span>
+      <span>{activeTool ? `Tool: ${activeTool.charAt(0).toUpperCase() + activeTool.slice(1)}` : 'Tool: Select'}</span>
+      <span>Zoom: {zoom ?? 100}%</span>
+      <span>
+        Dimensions: {imageDimensions ? `${imageDimensions.width} x ${imageDimensions.height}` : 'No image'}
+      </span>
+      {cursorPos && <span>X: {cursorPos.x} Y: {cursorPos.y}</span>}
+      <span>Objects: {objectCount ?? 0}</span>
     </footer>
   )
 }

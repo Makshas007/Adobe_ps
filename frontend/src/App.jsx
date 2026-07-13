@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import ToolbarRibbon from './components/ToolbarRibbon'
 import StatusBar from './components/StatusBar'
 import TreePanel from './components/TreePanel'
 import ChatWindow from './components/ChatWindow'
-import ImageViewer from './components/ImageViewer'
+import CanvasEditor from './components/CanvasEditor'
+import ToolOptions from './components/ToolOptions'
 import LibraryView from './components/LibraryView'
 import ChatHistoryView from './components/ChatHistoryView'
 import { image, history, waitForDB } from './utilities/indexedDB.js'
@@ -17,13 +18,109 @@ function App() {
   const [historyVersion, setHistoryVersion] = useState(0)
   const [view, setView] = useState('editor')
 
+  const [activeTool, setActiveTool] = useState('select')
+  const [brushColor, setBrushColor] = useState('#FF1E8A')
+  const [brushSize, setBrushSize] = useState(5)
+  const [brushOpacity, setBrushOpacity] = useState(1)
+  const [zoom, setZoom] = useState(100)
+  const [imageDimensions, setImageDimensions] = useState(null)
+  const [cursorPos, setCursorPos] = useState(null)
+  const [objectCount, setObjectCount] = useState(0)
+  const [filterValues, setFilterValues] = useState({
+    Brightness: 0, Contrast: 0, Saturation: 0, HueRotation: 0, Blur: 0,
+  })
+
+  const canvasRef = useRef(null)
+
+  const handleCanvasReady = useCallback((canvas) => {
+    canvas.on('object:added', () => {
+      if (canvasRef.current) {
+        setObjectCount(canvasRef.current.getObjectCount())
+      }
+    })
+    canvas.on('object:removed', () => {
+      if (canvasRef.current) {
+        setObjectCount(canvasRef.current.getObjectCount())
+      }
+    })
+  }, [])
+
+  const handleExport = useCallback(() => {
+    if (!canvasRef.current) return
+    const dataUri = canvasRef.current.exportImage()
+    if (dataUri) {
+      const link = document.createElement('a')
+      link.download = `edited-${Date.now()}.png`
+      link.href = dataUri
+      link.click()
+    }
+  }, [])
+
+  useEffect(() => {
+    window.addEventListener('canvas-export', handleExport)
+    return () => window.removeEventListener('canvas-export', handleExport)
+  }, [handleExport])
+
+  const handleApplyCrop = useCallback(async () => {
+    if (!canvasRef.current) return
+    const canvas = canvasRef.current.getCanvas()
+    if (!canvas) return
+
+    const objects = canvas.getObjects()
+    const cropRect = objects.find(o =>
+      o.type === 'rect' && o.strokeDashArray && o.selectable === false && o.evented === false
+    )
+
+    if (!cropRect || cropRect.width < 2 || cropRect.height < 2) {
+      alert('Draw a crop rectangle on the canvas first.')
+      return
+    }
+
+    const cropData = {
+      left: cropRect.left,
+      top: cropRect.top,
+      width: cropRect.width,
+      height: cropRect.height,
+    }
+
+    const newDims = await canvasRef.current.applyCrop(cropData)
+    if (newDims) {
+      setImageDimensions(newDims)
+    }
+    canvas.renderAll()
+    setActiveTool('select')
+  }, [])
+
+  const handleResize = useCallback((newWidth, newHeight) => {
+    if (!canvasRef.current) return
+    canvasRef.current.resizeCanvas(newWidth, newHeight)
+    setImageDimensions({ width: newWidth, height: newHeight })
+    setActiveTool('select')
+  }, [])
+
+  const handleFilterChange = useCallback((filterType, value) => {
+    setFilterValues(prev => ({ ...prev, [filterType]: value }))
+    if (canvasRef.current) {
+      canvasRef.current.applyFilter(filterType, value)
+    }
+  }, [])
+
   const handleUpload = async ({ url, filename, file }) => {
     setImageUrl(url)
+<<<<<<< HEAD
     const { id } = await image.addImage(file);
     const headNode = await history.addNode({ label: "Uploaded File", time: new Date().toLocaleString(), imageId: id }, null)
     setImageHistoryNode(headNode);
     setHead(headNode);
     localStorage.setItem(headNode.id, filename)
+=======
+    setFilterValues({ Brightness: 0, Contrast: 0, Saturation: 0, HueRotation: 0, Blur: 0 })
+    setActiveTool('select')
+    const { id } = await image.addImage(file)
+    const headNode = await history.addNode({ label: "Uploaded File", time: new Date().toLocaleString(), imageId: id, filename }, null)
+    setImageHistoryNode({ ...headNode, filename })
+    setHead(headNode)
+>>>>>>> 73bb0bb (added tools work)
     const chats = JSON.parse(localStorage.getItem('adobe_mock_ps_chats') || '{}')
     chats[headNode.id] = {
       id: headNode.id,
@@ -34,7 +131,7 @@ function App() {
       timestamp: Date.now()
     }
     localStorage.setItem('adobe_mock_ps_chats', JSON.stringify(chats))
-    window.history.pushState(null, '', '/' + headNode.id);
+    window.history.pushState(null, '', '/' + headNode.id)
     setHistoryVersion(v => v + 1)
   }
 
@@ -42,9 +139,7 @@ function App() {
     const node = await history.getNode(nodeId)
     if (!node) return null
     const childIds = Array.isArray(node.nextNode) ? node.nextNode : []
-    if (childIds.length === 0) {
-      return node
-    }
+    if (childIds.length === 0) return node
     return findLatestNode(childIds[childIds.length - 1])
   }
 
@@ -52,14 +147,12 @@ function App() {
     try {
       const node = await history.getNode(nodeId)
       if (!node) return
-
       let curr = node
       while (curr.prevNode) {
         const prev = await history.getNode(curr.prevNode)
         if (!prev) break
         curr = prev
       }
-
       setHead(curr)
       await setNode(nodeId)
       window.history.pushState(null, '', '/' + curr.id)
@@ -73,9 +166,7 @@ function App() {
     try {
       const headNode = await history.getNode(chatId)
       if (!headNode) return
-
       setHead(headNode)
-
       const latestNode = await findLatestNode(chatId)
       if (latestNode) {
         await setNode(latestNode.id)
@@ -93,11 +184,9 @@ function App() {
     try {
       await history.delete(chatId)
       localStorage.removeItem(chatId)
-
       const chats = JSON.parse(localStorage.getItem('adobe_mock_ps_chats') || '{}')
       delete chats[chatId]
       localStorage.setItem('adobe_mock_ps_chats', JSON.stringify(chats))
-
       if (head && head.id === chatId) {
         setHead({})
         setImageHistoryNode(null)
@@ -114,13 +203,10 @@ function App() {
     const initLoad = async () => {
       try {
         await waitForDB()
-
-        // Migration: Register existing legacy head nodes into localStorage chat history
         const heads = await history.getHeads()
         if (heads && heads.length > 0) {
           const chats = JSON.parse(localStorage.getItem('adobe_mock_ps_chats') || '{}')
           let updated = false
-
           for (const headNode of heads) {
             if (headNode.id) {
               if (!localStorage.getItem(headNode.id)) {
@@ -143,8 +229,7 @@ function App() {
             localStorage.setItem('adobe_mock_ps_chats', JSON.stringify(chats))
           }
         }
-
-        const uploadId = location.pathname.split('/')[1];
+        const uploadId = location.pathname.split('/')[1]
         const node = await history.getNode(uploadId)
         if (node) {
           setHead(node)
@@ -161,7 +246,6 @@ function App() {
     if (!nodeId) return
     const nextNodeData = await history.getNode(nodeId)
     if (!nextNodeData) return
-
     setImageHistoryNode(nextNodeData)
     if (nextNodeData.imageId) {
       const imgBlob = await image.getImage(nextNodeData.imageId)
@@ -175,65 +259,74 @@ function App() {
     }
   }
 
-  const nextNode = async () => {
+  const nextNode = useCallback(async () => {
     if (!imageHistoryNode?.nextNode?.length) return
-
     const nextIds = Array.isArray(imageHistoryNode.nextNode) ? imageHistoryNode.nextNode : []
     if (nextIds.length === 1) {
       await setNode(nextIds[0])
       return
     }
-
     const choice = window.prompt('Enter index to go to', '1')
     const index = Number.parseInt(choice ?? '1', 10)
     const targetId = nextIds[index - 1]
-    if (targetId) {
-      await setNode(targetId)
-    }
-  }
+    if (targetId) await setNode(targetId)
+  }, [imageHistoryNode])
 
-  const prevNode = async () => {
+  const prevNode = useCallback(async () => {
     if (!imageHistoryNode?.prevNode) return
     await setNode(imageHistoryNode.prevNode)
-  }
+  }, [imageHistoryNode])
 
   const handleEditComplete = async (dataUri, label, filename) => {
     setImageUrl(dataUri)
+<<<<<<< HEAD
     const blob = dataURLtoBlob(dataUri);
     const { id } = await image.addImage(blob);
     const node = await history.addNode({ label, time: new Date().toLocaleString(), imageId: id }, imageHistoryNode.id)
     localStorage.setItem(node.id, filename)
+=======
+    setFilterValues({ Brightness: 0, Contrast: 0, Saturation: 0, HueRotation: 0, Blur: 0 })
+    setActiveTool('select')
+    const blob = dataURLtoBlob(dataUri)
+    const { id } = await image.addImage(blob)
+    const node = await history.addNode({ label, time: new Date().toLocaleString(), imageId: id, filename }, imageHistoryNode.id)
+>>>>>>> 73bb0bb (added tools work)
     setImageHistoryNode(node)
     setHistoryVersion(v => v + 1)
   }
 
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.target.closest('input, textarea, [contenteditable]')) return
+      if (e.ctrlKey || e.metaKey) {
+        if (e.key === 'z') { e.preventDefault(); prevNode() }
+        if (e.key === 'y') { e.preventDefault(); nextNode() }
+        return
+      }
+      switch (e.key.toLowerCase()) {
+        case 'v': setActiveTool('select'); break
+        case 'b': setActiveTool('brush'); break
+        case 'e': setActiveTool('eraser'); break
+        case 't': setActiveTool('text'); break
+        case 'u': setActiveTool('rect'); break
+        case 'c': setActiveTool('crop'); break
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [prevNode, nextNode])
+
   return (
     <div className="app-layout">
-      {/* Top Navbar */}
       <nav className="top-navbar">
         <div className="navbar-logo">
           <span className="logo-icon">🎨</span>
           <span className="logo-text">Adobe Mock PS</span>
         </div>
         <div className="navbar-links">
-          <button
-            className={`nav-link ${view === 'editor' ? 'active' : ''}`}
-            onClick={() => setView('editor')}
-          >
-            Editor
-          </button>
-          <button
-            className={`nav-link ${view === 'library' ? 'active' : ''}`}
-            onClick={() => setView('library')}
-          >
-            Library
-          </button>
-          <button
-            className={`nav-link ${view === 'chatHistory' ? 'active' : ''}`}
-            onClick={() => setView('chatHistory')}
-          >
-            Chat History
-          </button>
+          <button className={`nav-link ${view === 'editor' ? 'active' : ''}`} onClick={() => setView('editor')}>Editor</button>
+          <button className={`nav-link ${view === 'library' ? 'active' : ''}`} onClick={() => setView('library')}>Library</button>
+          <button className={`nav-link ${view === 'chatHistory' ? 'active' : ''}`} onClick={() => setView('chatHistory')}>Chat History</button>
         </div>
         <div className="user-nametag">
           <div className="user-avatar">AD</div>
@@ -241,7 +334,6 @@ function App() {
         </div>
       </nav>
 
-      {/* Main Workspace View Switcher */}
       {view === 'editor' && (
         <div className="main-content">
           <ToolbarRibbon
@@ -250,8 +342,38 @@ function App() {
             onRedo={nextNode}
             canUndo={!!(imageHistoryNode && imageHistoryNode.prevNode)}
             canRedo={!!(imageHistoryNode && imageHistoryNode.nextNode?.length)}
+            activeTool={activeTool}
+            setActiveTool={setActiveTool}
+            hasImage={!!imageUrl}
           />
-          <ImageViewer imageUrl={imageUrl} />
+          <div className="canvas-area">
+            <ToolOptions
+              activeTool={activeTool}
+              brushColor={brushColor}
+              setBrushColor={setBrushColor}
+              brushSize={brushSize}
+              setBrushSize={setBrushSize}
+              brushOpacity={brushOpacity}
+              setBrushOpacity={setBrushOpacity}
+              onApplyCrop={handleApplyCrop}
+              onResize={handleResize}
+              filterValues={filterValues}
+              onFilterChange={handleFilterChange}
+              imageDimensions={imageDimensions}
+            />
+            <CanvasEditor
+              ref={canvasRef}
+              imageUrl={imageUrl}
+              activeTool={activeTool}
+              brushColor={brushColor}
+              brushSize={brushSize}
+              brushOpacity={brushOpacity}
+              onCursorMove={setCursorPos}
+              onZoomChange={setZoom}
+              onImageDimensions={setImageDimensions}
+              onCanvasReady={handleCanvasReady}
+            />
+          </div>
           <div className="right-column">
             <TreePanel headId={head.id} historyVersion={historyVersion} setNode={setNode} currNode={imageHistoryNode} />
             <ChatWindow imageHistoryNode={imageHistoryNode} head={head} onEditComplete={handleEditComplete} />
@@ -267,14 +389,16 @@ function App() {
 
       {view === 'chatHistory' && (
         <div className="main-content">
-          <ChatHistoryView
-            currentHeadId={head.id}
-            onSelectChat={handleSelectChat}
-            onDeleteChat={handleDeleteChat}
-          />
+          <ChatHistoryView currentHeadId={head.id} onSelectChat={handleSelectChat} onDeleteChat={handleDeleteChat} />
         </div>
       )}
-      <StatusBar />
+      <StatusBar
+        zoom={zoom}
+        imageDimensions={imageDimensions}
+        cursorPos={cursorPos}
+        activeTool={activeTool}
+        objectCount={objectCount}
+      />
     </div>
   )
 }
