@@ -44,8 +44,6 @@ export default function ColorPicker({ color, onChange }) {
     }
   }
 
-  const isValidHex = (v) => /^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(v.trim())
-
   return (
     <div className="color-picker" ref={panelRef}>
       <button

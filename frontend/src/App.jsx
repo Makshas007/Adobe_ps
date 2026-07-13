@@ -415,6 +415,7 @@ function App() {
             <CanvasEditor
               ref={canvasRef}
               imageUrl={imageUrl}
+              currentNodeId={imageHistoryNode?.id}
               activeTool={activeTool}
               brushColor={brushColor}
               brushSize={brushSize}

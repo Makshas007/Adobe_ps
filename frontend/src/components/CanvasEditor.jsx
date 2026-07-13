@@ -15,7 +15,7 @@ function getImageBounds(img) {
 }
 
 const CanvasEditor = forwardRef(function CanvasEditor(
-  { imageUrl, activeTool, brushColor, brushSize, brushOpacity, onCursorMove, onZoomChange, onImageDimensions, onCanvasReady, onToolChange, onCanvasHistoryChange },
+  { imageUrl, activeTool, brushColor, brushSize, brushOpacity, onCursorMove, onZoomChange, onImageDimensions, onCanvasReady, onToolChange, onCanvasHistoryChange, currentNodeId },
   ref
 ) {
   const canvasRef = useRef(null)
@@ -29,11 +29,21 @@ const CanvasEditor = forwardRef(function CanvasEditor(
   const shapeRef = useRef(null)
   const cropRectRef = useRef(null)
 
+  const nodeHistoryMapRef = useRef(new Map())
+  const currentNodeIdRef = useRef(null)
   const canvasHistoryRef = useRef([])
   const canvasHistoryIndexRef = useRef(-1)
   const skipSaveRef = useRef(false)
+  const pendingRestoreRef = useRef(false)
   const onCanvasHistoryChangeRef = useRef(onCanvasHistoryChange)
   useEffect(() => { onCanvasHistoryChangeRef.current = onCanvasHistoryChange }, [onCanvasHistoryChange])
+
+  const notifyHistoryChange = useCallback(() => {
+    onCanvasHistoryChangeRef.current?.(
+      canvasHistoryIndexRef.current > 0,
+      canvasHistoryIndexRef.current < canvasHistoryRef.current.length - 1
+    )
+  }, [])
 
   const saveCanvasState = useCallback(() => {
     if (skipSaveRef.current) return
@@ -50,11 +60,8 @@ const CanvasEditor = forwardRef(function CanvasEditor(
       canvasHistoryRef.current.shift()
       canvasHistoryIndexRef.current--
     }
-    onCanvasHistoryChangeRef.current?.(
-      canvasHistoryIndexRef.current > 0,
-      canvasHistoryIndexRef.current < canvasHistoryRef.current.length - 1
-    )
-  }, [])
+    notifyHistoryChange()
+  }, [notifyHistoryChange])
 
   const canvasUndo = useCallback(() => {
     if (canvasHistoryIndexRef.current <= 0) return
@@ -69,12 +76,9 @@ const CanvasEditor = forwardRef(function CanvasEditor(
       objects.forEach(o => canvas.add(o))
       canvas.renderAll()
       skipSaveRef.current = false
-      onCanvasHistoryChangeRef.current?.(
-        canvasHistoryIndexRef.current > 0,
-        canvasHistoryIndexRef.current < canvasHistoryRef.current.length - 1
-      )
+      notifyHistoryChange()
     })
-  }, [])
+  }, [notifyHistoryChange])
 
   const canvasRedo = useCallback(() => {
     if (canvasHistoryIndexRef.current >= canvasHistoryRef.current.length - 1) return
@@ -89,18 +93,41 @@ const CanvasEditor = forwardRef(function CanvasEditor(
       objects.forEach(o => canvas.add(o))
       canvas.renderAll()
       skipSaveRef.current = false
-      onCanvasHistoryChangeRef.current?.(
-        canvasHistoryIndexRef.current > 0,
-        canvasHistoryIndexRef.current < canvasHistoryRef.current.length - 1
-      )
+      notifyHistoryChange()
     })
-  }, [])
+  }, [notifyHistoryChange])
 
-  const resetCanvasHistory = useCallback(() => {
-    canvasHistoryRef.current = []
-    canvasHistoryIndexRef.current = -1
-    onCanvasHistoryChangeRef.current?.(false, false)
-  }, [])
+  useEffect(() => {
+    const prevId = currentNodeIdRef.current
+    const newId = currentNodeId || null
+
+    if (prevId && prevId !== newId) {
+      nodeHistoryMapRef.current.set(prevId, {
+        history: [...canvasHistoryRef.current],
+        index: canvasHistoryIndexRef.current,
+      })
+    }
+
+    if (newId) {
+      const saved = nodeHistoryMapRef.current.get(newId)
+      if (saved) {
+        canvasHistoryRef.current = saved.history
+        canvasHistoryIndexRef.current = saved.index
+        pendingRestoreRef.current = true
+      } else {
+        canvasHistoryRef.current = []
+        canvasHistoryIndexRef.current = -1
+        pendingRestoreRef.current = false
+      }
+    } else {
+      canvasHistoryRef.current = []
+      canvasHistoryIndexRef.current = -1
+      pendingRestoreRef.current = false
+    }
+
+    currentNodeIdRef.current = newId
+    notifyHistoryChange()
+  }, [currentNodeId, notifyHistoryChange])
 
   const activeToolRef = useRef(activeTool)
   const brushColorRef = useRef(brushColor)
@@ -200,6 +227,7 @@ const CanvasEditor = forwardRef(function CanvasEditor(
           canvas.sendObjectToBack(fabricImage)
           bgImageRef.current = fabricImage
 
+          const isSelect = activeToolRef.current === 'select'
           userObjects.forEach(obj => {
             obj.set({
               left: (obj.left || 0) - left,
@@ -208,6 +236,11 @@ const CanvasEditor = forwardRef(function CanvasEditor(
             obj.scaleX = (obj.scaleX || 1) * scale
             obj.scaleY = (obj.scaleY || 1) * scale
             obj.setCoords()
+            obj.selectable = isSelect
+            obj.evented = isSelect
+            obj.hasControls = isSelect
+            obj.hasBorders = isSelect
+            obj.hoverCursor = isSelect ? 'move' : 'default'
             canvas.add(obj)
           })
 
@@ -235,12 +268,13 @@ const CanvasEditor = forwardRef(function CanvasEditor(
       const scaleY = newHeight / srcHeight
       const scale = Math.min(scaleX, scaleY)
 
+      const isSelect = activeToolRef.current === 'select'
       const fabricImage = new fabric.FabricImage(srcEl, {
-        selectable: false,
-        evented: false,
+        selectable: isSelect,
+        evented: isSelect,
         hasControls: false,
         hasBorders: false,
-        hoverCursor: 'default',
+        hoverCursor: isSelect ? 'move' : 'default',
         originX: 'center',
         originY: 'center',
         left: newWidth / 2,
@@ -306,7 +340,6 @@ const CanvasEditor = forwardRef(function CanvasEditor(
     },
     canvasUndo,
     canvasRedo,
-    resetCanvasHistory,
   }))
 
   const fitImageToContainer = useCallback((canvas, imgEl) => {
@@ -446,7 +479,6 @@ const CanvasEditor = forwardRef(function CanvasEditor(
     canvas.getObjects().forEach(obj => {
       if (obj !== bgImageRef.current) canvas.remove(obj)
     })
-    resetCanvasHistory()
 
     const imgEl = new Image()
     imgEl.crossOrigin = 'anonymous'
@@ -454,11 +486,19 @@ const CanvasEditor = forwardRef(function CanvasEditor(
       const currentCanvas = fabricRef.current
       if (!currentCanvas || currentCanvas !== canvas) return
       fitImageToContainer(currentCanvas, imgEl)
-      skipSaveRef.current = true
-      requestAnimationFrame(() => { skipSaveRef.current = false })
+      if (pendingRestoreRef.current && canvasHistoryIndexRef.current >= 0) {
+        skipSaveRef.current = true
+        const state = JSON.parse(canvasHistoryRef.current[canvasHistoryIndexRef.current])
+        fabric.util.enlivenObjects(state).then(objects => {
+          objects.forEach(o => currentCanvas.add(o))
+          currentCanvas.renderAll()
+          skipSaveRef.current = false
+          pendingRestoreRef.current = false
+        })
+      }
     }
     imgEl.src = imageUrl
-  }, [imageUrl, fitImageToContainer, resetCanvasHistory])
+  }, [imageUrl, fitImageToContainer])
 
   useEffect(() => {
     const canvas = fabricRef.current
@@ -622,11 +662,11 @@ const CanvasEditor = forwardRef(function CanvasEditor(
         canvas.selection = true
         canvas.forEachObject(obj => {
           if (obj === bgImageRef.current) {
-            obj.selectable = false
-            obj.evented = false
+            obj.selectable = true
+            obj.evented = true
             obj.hasControls = false
             obj.hasBorders = false
-            obj.hoverCursor = 'default'
+            obj.hoverCursor = 'move'
           } else {
             obj.selectable = true
             obj.evented = true
