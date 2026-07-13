@@ -68,9 +68,7 @@ function App() {
     if (!canvas) return
 
     const objects = canvas.getObjects()
-    const cropRect = objects.find(o =>
-      o.type === 'rect' && o.strokeDashArray && o.selectable === false && o.evented === false
-    )
+    const cropRect = objects.find(o => o.isCropRect === true)
 
     if (!cropRect || cropRect.width < 2 || cropRect.height < 2) {
       alert('Draw a crop rectangle on the canvas first.')
@@ -405,6 +403,7 @@ function App() {
               onZoomChange={setZoom}
               onImageDimensions={setImageDimensions}
               onCanvasReady={handleCanvasReady}
+              onToolChange={setActiveTool}
             />
           </div>
           <div className="right-column">

@@ -15,7 +15,7 @@ function getImageBounds(img) {
 }
 
 const CanvasEditor = forwardRef(function CanvasEditor(
-  { imageUrl, activeTool, brushColor, brushSize, brushOpacity, onCursorMove, onZoomChange, onImageDimensions, onCanvasReady },
+  { imageUrl, activeTool, brushColor, brushSize, brushOpacity, onCursorMove, onZoomChange, onImageDimensions, onCanvasReady, onToolChange },
   ref
 ) {
   const canvasRef = useRef(null)
@@ -28,7 +28,6 @@ const CanvasEditor = forwardRef(function CanvasEditor(
   const shapeStartPoint = useRef(null)
   const shapeRef = useRef(null)
   const cropRectRef = useRef(null)
-  const cropOverlayRef = useRef(null)
 
   const activeToolRef = useRef(activeTool)
   const brushColorRef = useRef(brushColor)
@@ -38,6 +37,9 @@ const CanvasEditor = forwardRef(function CanvasEditor(
   useEffect(() => { brushColorRef.current = brushColor }, [brushColor])
   useEffect(() => { brushSizeRef.current = brushSize }, [brushSize])
   useEffect(() => { brushOpacityRef.current = brushOpacity }, [brushOpacity])
+
+  const onToolChangeRef = useRef(onToolChange)
+  useEffect(() => { onToolChangeRef.current = onToolChange }, [onToolChange])
 
   useImperativeHandle(ref, () => ({
     getCanvas: () => fabricRef.current,
@@ -87,12 +89,10 @@ const CanvasEditor = forwardRef(function CanvasEditor(
       )
       const croppedDataUrl = tmpCanvas.toDataURL('image/png')
 
-      canvas.remove(...canvas.getObjects().filter(o => o !== bgImageRef.current))
+      const userObjects = canvas.getObjects().filter(o => o !== bgImageRef.current && !o.isCropRect)
+      canvas.remove(...userObjects)
+
       if (cropRectRef.current) { canvas.remove(cropRectRef.current); cropRectRef.current = null }
-      if (cropOverlayRef.current) {
-        cropOverlayRef.current.forEach(o => canvas.remove(o))
-        cropOverlayRef.current = null
-      }
 
       const newWidth = tmpCanvas.width
       const newHeight = tmpCanvas.height
@@ -103,8 +103,13 @@ const CanvasEditor = forwardRef(function CanvasEditor(
           canvas.remove(bgImageRef.current)
           bgImageRef.current = null
 
+          const wrapper = wrapperRef.current
+          const containerW = wrapper ? wrapper.clientWidth : 800
+          const containerH = wrapper ? wrapper.clientHeight : 600
+          const scale = Math.min(containerW / newWidth, containerH / newHeight)
+
           canvas.setViewportTransform([1, 0, 0, 1, 0, 0])
-          canvas.setDimensions({ width: newWidth, height: newHeight })
+          canvas.setDimensions({ width: containerW, height: containerH })
 
           const fabricImage = new fabric.FabricImage(croppedImg, {
             selectable: false,
@@ -114,14 +119,27 @@ const CanvasEditor = forwardRef(function CanvasEditor(
             hoverCursor: 'default',
             originX: 'center',
             originY: 'center',
-            left: newWidth / 2,
-            top: newHeight / 2,
+            left: containerW / 2,
+            top: containerH / 2,
           })
+          fabricImage.scale(scale)
           canvas.add(fabricImage)
           canvas.sendObjectToBack(fabricImage)
           bgImageRef.current = fabricImage
+
+          userObjects.forEach(obj => {
+            obj.set({
+              left: (obj.left || 0) - left,
+              top: (obj.top || 0) - top,
+            })
+            obj.scaleX = (obj.scaleX || 1) * scale
+            obj.scaleY = (obj.scaleY || 1) * scale
+            obj.setCoords()
+            canvas.add(obj)
+          })
+
           canvas.renderAll()
-          resolve({ width: croppedImg.width, height: croppedImg.height })
+          resolve({ width: newWidth, height: newHeight })
         }
         croppedImg.src = croppedDataUrl
       })
@@ -374,10 +392,6 @@ const CanvasEditor = forwardRef(function CanvasEditor(
 
     if (shapeRef.current) { canvas.remove(shapeRef.current); shapeRef.current = null }
     if (cropRectRef.current) { canvas.remove(cropRectRef.current); cropRectRef.current = null }
-    if (cropOverlayRef.current) {
-      cropOverlayRef.current.forEach(o => canvas.remove(o))
-      cropOverlayRef.current = null
-    }
 
     canvas.off('mouse:down')
     canvas.off('mouse:move')
@@ -437,24 +451,15 @@ const CanvasEditor = forwardRef(function CanvasEditor(
         const pointer = canvas.getScenePoint(opt.e)
         shapeStartPoint.current = { x: pointer.x, y: pointer.y }
 
-        const imgBounds = getImageBounds(bgImageRef.current)
-        const imgW = imgBounds.right - imgBounds.left
-        const imgH = imgBounds.bottom - imgBounds.top
-
-        const overlays = [
-          new fabric.Rect({ left: imgBounds.left, top: imgBounds.top, width: imgW, height: Math.max(0, pointer.y - imgBounds.top), fill: 'rgba(0,0,0,0.6)', selectable: false, evented: false }),
-          new fabric.Rect({ left: imgBounds.left, top: Math.max(pointer.y, imgBounds.top), width: imgW, height: Math.max(0, imgBounds.bottom - pointer.y), fill: 'rgba(0,0,0,0.6)', selectable: false, evented: false }),
-          new fabric.Rect({ left: imgBounds.left, top: imgBounds.top, width: Math.max(0, pointer.x - imgBounds.left), height: imgH, fill: 'rgba(0,0,0,0.6)', selectable: false, evented: false }),
-          new fabric.Rect({ left: Math.max(pointer.x, imgBounds.left), top: imgBounds.top, width: Math.max(0, imgBounds.right - pointer.x), height: imgH, fill: 'rgba(0,0,0,0.6)', selectable: false, evented: false }),
-        ]
         const cropRect = new fabric.Rect({
           left: pointer.x, top: pointer.y, width: 0, height: 0,
+          originX: 'left', originY: 'top',
           fill: 'transparent', stroke: '#fff', strokeWidth: 2,
           strokeDashArray: [5, 5], selectable: false, evented: false,
+          isCropRect: true,
         })
-        cropOverlayRef.current = overlays
         cropRectRef.current = cropRect
-        canvas.add(...overlays, cropRect)
+        canvas.add(cropRect)
       }
     })
 
@@ -493,17 +498,11 @@ const CanvasEditor = forwardRef(function CanvasEditor(
 
         const imgBounds = getImageBounds(bgImageRef.current)
 
-        const left = Math.max(imgBounds.left, Math.min(sx, pointer.x, imgBounds.right))
-        const top = Math.max(imgBounds.top, Math.min(sx, pointer.y, imgBounds.bottom))
-        const right = Math.min(imgBounds.right, Math.max(sx, pointer.x, imgBounds.left))
-        const bottom = Math.min(imgBounds.bottom, Math.max(sy, pointer.y, imgBounds.top))
+        const left = Math.max(imgBounds.left, Math.min(sx, pointer.x))
+        const top = Math.max(imgBounds.top, Math.min(sy, pointer.y))
+        const right = Math.min(imgBounds.right, Math.max(sx, pointer.x))
+        const bottom = Math.min(imgBounds.bottom, Math.max(sy, pointer.y))
         cropRectRef.current.set({ left, top, width: right - left, height: bottom - top })
-        if (cropOverlayRef.current?.length === 4) {
-          cropOverlayRef.current[0].set({ height: Math.max(0, top - imgBounds.top) })
-          cropOverlayRef.current[1].set({ top: bottom, height: Math.max(0, imgBounds.bottom - bottom) })
-          cropOverlayRef.current[2].set({ width: Math.max(0, left - imgBounds.left) })
-          cropOverlayRef.current[3].set({ left: right, width: Math.max(0, imgBounds.right - right) })
-        }
         canvas.renderAll()
       }
     })
@@ -522,7 +521,11 @@ const CanvasEditor = forwardRef(function CanvasEditor(
         canvas.renderAll()
         shapeRef.current = null
         shapeStartPoint.current = null
+        onToolChangeRef.current?.('select')
       } else if (tool === 'crop') {
+        if (cropRectRef.current && (cropRectRef.current.width < 2 || cropRectRef.current.height < 2)) {
+          if (cropRectRef.current) { canvas.remove(cropRectRef.current); cropRectRef.current = null }
+        }
         shapeStartPoint.current = null
       }
     })
@@ -531,11 +534,19 @@ const CanvasEditor = forwardRef(function CanvasEditor(
       case 'select':
         canvas.selection = true
         canvas.forEachObject(obj => {
-          obj.selectable = true
-          obj.evented = true
-          obj.hasControls = true
-          obj.hasBorders = true
-          obj.hoverCursor = 'move'
+          if (obj === bgImageRef.current) {
+            obj.selectable = false
+            obj.evented = false
+            obj.hasControls = false
+            obj.hasBorders = false
+            obj.hoverCursor = 'default'
+          } else {
+            obj.selectable = true
+            obj.evented = true
+            obj.hasControls = true
+            obj.hasBorders = true
+            obj.hoverCursor = 'move'
+          }
         })
         canvas.defaultCursor = 'default'
         break
