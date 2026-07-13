@@ -10,6 +10,7 @@ import {
   Square,
   Undo2,
   Redo2,
+  Save,
   Download,
   MousePointer,
 } from "lucide-react";
@@ -45,6 +46,7 @@ export default function ToolbarRibbon({
     { label: "Eraser", icon: Eraser, shortcut: "E" },
     { label: "Text", icon: Type, shortcut: "T" },
     { label: "Shape", icon: Square, shortcut: "U" },
+    {label: "Save", icon: Save, shortcut: "Ctrl+S"}
   ];
 
   const actions = [
@@ -117,6 +119,7 @@ export default function ToolbarRibbon({
               else if (tool.label === 'Crop') setActiveTool('crop');
               else if (tool.label === 'Resize') setActiveTool('resize');
               else if (tool.label === 'Filter') setActiveTool('filter');
+              else if (tool.label === 'Save') window.dispatchEvent(new CustomEvent('canvas-save'));
             }}
             disabled={!hasImage && tool.label !== 'Undo' && tool.label !== 'Redo'}
           >

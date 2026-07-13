@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import {image} from '../utilities/indexedDB.js'
 import { blobToDataURL } from '../utilities/type.js'
 
-export default function ChatWindow({ imageHistoryNode, canvasURI, head, onEditComplete }) {
+export default function ChatWindow({ imageHistoryNode, head, onEditComplete, canvasRef }) {
   const [messages, setMessages] = useState([
     { role: 'assistant', text: 'Hello! I can help you edit this image. Try asking me to crop, resize, or apply a filter.' },
   ])
@@ -67,11 +67,11 @@ export default function ChatWindow({ imageHistoryNode, canvasURI, head, onEditCo
         .catch((err) => reject(err));
     });
   };
-  async function handleSend(e) {
-    e.preventDefault()
-    if (!input.trim() || !imageHistoryNode) return
-
-    if(canvasURI && canvasURI!== await img_by_id(imageHistoryNode.imageId)){
+  const handleSave = useCallback(async () => {
+    if (!canvasRef?.current || !imageHistoryNode) return
+    const canvasURI = canvasRef.current.exportImage()
+    const dbImage = await img_by_id(imageHistoryNode.imageId)
+    if (canvasURI && canvasURI !== dbImage) {
       onEditComplete(canvasURI, 'User Edits', localStorage.getItem(head.id) || 'Untitled_Img.jpg')
       setMessages((prev) => {
         const updated = [...prev, { role: 'assistant', text: `Applied: User Edits` }]
@@ -79,7 +79,31 @@ export default function ChatWindow({ imageHistoryNode, canvasURI, head, onEditCo
         return updated
       })
     }
+  }, [canvasRef, imageHistoryNode, head, onEditComplete])
+
+  useEffect(() => {
+    const handleSaveEvent = () => {
+      handleSave()
+    }
+    window.addEventListener('canvas-save', handleSaveEvent)
+    return () => window.removeEventListener('canvas-save', handleSaveEvent)
+  }, [handleSave])
+
+  async function handleSend(e) {
+    e.preventDefault()
+    if (!input.trim() || !imageHistoryNode) return
     
+    const canvasURI = canvasRef?.current?.exportImage()
+    const dbImage = await img_by_id(imageHistoryNode.imageId)
+    if (canvasURI && canvasURI !== dbImage) {
+      onEditComplete(canvasURI, 'User Edits', localStorage.getItem(head.id) || 'Untitled_Img.jpg')
+      setMessages((prev) => {
+        const updated = [...prev, { role: 'assistant', text: `Applied: User Edits` }]
+        saveChats(updated)
+        return updated
+      })
+    }
+
     const prompt = input
     setMessages((prev) => {
       const updated = [...prev, { role: 'user', text: prompt }]

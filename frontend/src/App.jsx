@@ -331,6 +331,7 @@ function App() {
       if (e.ctrlKey || e.metaKey) {
         if (e.key === 'z') { e.preventDefault(); prevNode() }
         if (e.key === 'y') { e.preventDefault(); nextNode() }
+        if (e.key === 's') { e.preventDefault(); window.dispatchEvent(new CustomEvent('canvas-save')) }
         return
       }
       switch (e.key.toLowerCase()) {
@@ -408,7 +409,7 @@ function App() {
           </div>
           <div className="right-column">
             <TreePanel headId={head.id} historyVersion={historyVersion} setNode={setNode} currNode={imageHistoryNode} />
-            <ChatWindow imageHistoryNode={imageHistoryNode} canvasURI={canvasRef.current?.exportImage()} head={head} onEditComplete={handleEditComplete} />
+            <ChatWindow imageHistoryNode={imageHistoryNode} head={head} onEditComplete={handleEditComplete} canvasRef={canvasRef} />
           </div>
         </div>
       )}
