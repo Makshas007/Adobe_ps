@@ -15,7 +15,7 @@ from app.schemas.responses import EditResponse, JobStatusResponse, StepInfo
 from app.services.gemini_service import GeminiError
 from app.services.planner import Planner
 from app.services.pipeline import PipelineExecutor
-from app.utils.image_utils import ensure_rgb, image_to_base64, load_image
+from app.utils.image_utils import data_url_to_image, ensure_rgb, image_to_base64, load_image
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -55,18 +55,31 @@ async def edit_image(
 ) -> EditResponse:
     job_id = uuid.uuid4().hex[:12]
 
-    image_path = _get_upload_path(request.image, settings)
-    try:
-        input_image = load_image(image_path)
-    except FileNotFoundError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={
-                "error_code": "IMAGE_NOT_FOUND",
-                "detail": f"Uploaded image '{request.image}' not found on disk",
-                "suggestion": "Re-upload the image via POST /upload",
-            },
-        ) from exc
+    if request.image.startswith("data:image"):
+        try:
+            input_image = data_url_to_image(request.image)
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "error_code": "INVALID_IMAGE_DATA",
+                    "detail": f"Failed to decode image data URL: {exc}",
+                    "suggestion": "Ensure the image data is valid base64",
+                },
+            ) from exc
+    else:
+        image_path = _get_upload_path(request.image, settings)
+        try:
+            input_image = load_image(image_path)
+        except FileNotFoundError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={
+                    "error_code": "IMAGE_NOT_FOUND",
+                    "detail": f"Uploaded image '{request.image}' not found on disk",
+                    "suggestion": "Re-upload the image via POST /upload",
+                },
+            ) from exc
     input_image = ensure_rgb(input_image)
 
     logger.info("Job %s: Starting edit with prompt: %.80s", job_id, request.prompt)

@@ -50,6 +50,11 @@ def base64_to_image(data: str) -> Image.Image:
     return Image.open(buffer).convert("RGB")
 
 
+def data_url_to_image(data_url: str) -> Image.Image:
+    header, encoded = data_url.split(",", 1)
+    return base64_to_image(encoded)
+
+
 def pil_to_cv2(image: Image.Image) -> np.ndarray:
     return cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
 

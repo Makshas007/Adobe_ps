@@ -57,6 +57,7 @@ export default function ChatWindow({ imageHistoryNode, canvasURI, head, onEditCo
     return new Promise((resolve, reject) => {
       image.getImage(id)
         .then((res) => {
+          if (!res) return resolve(null);
           try {
             blobToDataURL(res, (dat) => resolve(dat));
           } catch (err) {
@@ -78,8 +79,8 @@ export default function ChatWindow({ imageHistoryNode, canvasURI, head, onEditCo
     })
     setInput('')
 
-    if(canvasURI && canvasURI!== await img_by_id(imageHistoryNode.imgId)){
-      onEditComplete(canvasURI, 'User Edits', data.filename || 'Untitled_Img.jpg')
+    if(canvasURI && canvasURI!== await img_by_id(imageHistoryNode.imageId)){
+      onEditComplete(canvasURI, 'User Edits', localStorage.getItem(head.id) || 'Untitled_Img.jpg')
       setMessages((prev) => {
         const updated = [...prev, { role: 'assistant', text: `Applied: User Edits` }]
         saveChats(updated)
@@ -91,7 +92,7 @@ export default function ChatWindow({ imageHistoryNode, canvasURI, head, onEditCo
       const res = await fetch('/edit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt, image: canvasURI || await img_by_id(imageHistoryNode.imgId) }),
+        body: JSON.stringify({ prompt, image: canvasURI || await img_by_id(imageHistoryNode.imageId) }),
       })
       if (!res.ok) {
         let errorMsg = 'Edit failed. Please try again.'
@@ -113,7 +114,7 @@ export default function ChatWindow({ imageHistoryNode, canvasURI, head, onEditCo
       data.steps.forEach(
         (step, i) => label += (i + 1 === data.steps.length) ? step.operation : step.operation + ' -> '
       )
-      onEditComplete(dataUri, label, data.filename || 'Untitled_Img.jpg')
+      onEditComplete(dataUri, label, localStorage.getItem(head.id) || 'Untitled_Img.jpg')
       setMessages((prev) => {
         const updated = [...prev, { role: 'assistant', text: `Applied: ${prompt}` }]
         saveChats(updated)
