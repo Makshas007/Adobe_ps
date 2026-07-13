@@ -71,14 +71,6 @@ export default function ChatWindow({ imageHistoryNode, canvasURI, head, onEditCo
     e.preventDefault()
     if (!input.trim() || !imageHistoryNode) return
 
-    const prompt = input
-    setMessages((prev) => {
-      const updated = [...prev, { role: 'user', text: prompt }]
-      saveChats(updated)
-      return updated
-    })
-    setInput('')
-
     if(canvasURI && canvasURI!== await img_by_id(imageHistoryNode.imageId)){
       onEditComplete(canvasURI, 'User Edits', localStorage.getItem(head.id) || 'Untitled_Img.jpg')
       setMessages((prev) => {
@@ -87,6 +79,14 @@ export default function ChatWindow({ imageHistoryNode, canvasURI, head, onEditCo
         return updated
       })
     }
+    
+    const prompt = input
+    setMessages((prev) => {
+      const updated = [...prev, { role: 'user', text: prompt }]
+      saveChats(updated)
+      return updated
+    })
+    setInput('')
 
     try {
       const res = await fetch('/edit', {
