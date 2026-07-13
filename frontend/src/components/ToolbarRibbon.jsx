@@ -16,7 +16,7 @@ import {
 
 export default function ToolbarRibbon({
   onUpload, onUndo, onRedo, canUndo, canRedo,
-  activeTool, setActiveTool, hasImage,
+  activeTool, setActiveTool, hasImage, redoOptions = [],
 }) {
   const fileInputRef = useRef(null);
   const [redoDropdownOpen, setRedoDropdownOpen] = useState(false);
@@ -140,20 +140,22 @@ export default function ToolbarRibbon({
           disabled = !hasImage;
         }
 
-        if (tool.label === "Redo") {
+        if (action.label === "Redo") {
           const handleRedoClick = () => {
-            if (redoOptions.length === 1) {
+            if (redoOptions && redoOptions.length === 1) {
               onRedo(redoOptions[0].id);
-            } else if (redoOptions.length > 1) {
+            } else if (redoOptions && redoOptions.length > 1) {
               setRedoDropdownOpen(!redoDropdownOpen);
+            } else {
+              onRedo();
             }
           };
 
           return (
-            <div key={tool.label} className="redo-container">
+            <div key={action.label} className="redo-container">
               <button 
-                className="tool-btn" 
-                title={tool.label}
+                className={`tool-btn ${redoDropdownOpen ? 'tool-btn--active' : ''}`} 
+                title={action.label}
                 onClick={handleRedoClick}
                 disabled={!canRedo}
               >

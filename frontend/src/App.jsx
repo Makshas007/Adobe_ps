@@ -298,7 +298,7 @@ function App() {
     }
   }
 
-  const handleRedo = async (targetId) => {
+  const nextNode = useCallback(async (targetId) => {
     if (targetId) {
       await setNode(targetId)
     } else {
@@ -308,18 +308,6 @@ function App() {
         await setNode(nextIds[0])
       }
     }
-  }
-  const nextNode = useCallback(async () => {
-    if (!imageHistoryNode?.nextNode?.length) return
-    const nextIds = Array.isArray(imageHistoryNode.nextNode) ? imageHistoryNode.nextNode : []
-    if (nextIds.length === 1) {
-      await setNode(nextIds[0])
-      return
-    }
-    const choice = window.prompt('Enter index to go to', '1')
-    const index = Number.parseInt(choice ?? '1', 10)
-    const targetId = nextIds[index - 1]
-    if (targetId) await setNode(targetId)
   }, [imageHistoryNode])
 
   const prevNode = useCallback(async () => {
@@ -383,7 +371,7 @@ function App() {
           <ToolbarRibbon
             onUpload={handleUpload}
             onUndo={prevNode}
-            onRedo={handleRedo}
+            onRedo={nextNode}
             redoOptions={redoOptions}
             canUndo={!!(imageHistoryNode && imageHistoryNode.prevNode)}
             canRedo={!!(imageHistoryNode && imageHistoryNode.nextNode?.length)}
