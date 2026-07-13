@@ -16,6 +16,7 @@ function App() {
   const [head, setHead] = useState({})
   const [historyVersion, setHistoryVersion] = useState(0)
   const [view, setView] = useState('editor')
+  const [redoOptions, setRedoOptions] = useState([])
 
   const handleUpload = async ({ url, filename, file }) => {
     setImageUrl(url)
@@ -157,6 +158,51 @@ function App() {
     initLoad()
   }, [])
 
+  useEffect(() => {
+    let active = true
+    const urlsToCleanup = []
+
+    const fetchRedoOptions = async () => {
+      if (!imageHistoryNode?.nextNode?.length) {
+        setRedoOptions([])
+        return
+      }
+      const options = []
+      const nextIds = Array.isArray(imageHistoryNode.nextNode) ? imageHistoryNode.nextNode : []
+      for (const id of nextIds) {
+        const node = await history.getNode(id)
+        if (node) {
+          let imageUrl = null
+          if (node.imageId) {
+            const imgBlob = await image.getImage(node.imageId)
+            if (imgBlob) {
+              imageUrl = URL.createObjectURL(imgBlob)
+              urlsToCleanup.push(imageUrl)
+            }
+          }
+          options.push({
+            id: node.id,
+            label: node.label || 'Next Step',
+            time: node.time || '',
+            imageUrl
+          })
+        }
+      }
+      if (active) {
+        setRedoOptions(options)
+      }
+    }
+
+    fetchRedoOptions()
+
+    return () => {
+      active = false
+      urlsToCleanup.forEach(url => {
+        URL.revokeObjectURL(url)
+      })
+    }
+  }, [imageHistoryNode, historyVersion])
+
   const setNode = async (nodeId) => {
     if (!nodeId) return
     const nextNodeData = await history.getNode(nodeId)
@@ -175,20 +221,15 @@ function App() {
     }
   }
 
-  const nextNode = async () => {
-    if (!imageHistoryNode?.nextNode?.length) return
-
-    const nextIds = Array.isArray(imageHistoryNode.nextNode) ? imageHistoryNode.nextNode : []
-    if (nextIds.length === 1) {
-      await setNode(nextIds[0])
-      return
-    }
-
-    const choice = window.prompt('Enter index to go to', '1')
-    const index = Number.parseInt(choice ?? '1', 10)
-    const targetId = nextIds[index - 1]
+  const handleRedo = async (targetId) => {
     if (targetId) {
       await setNode(targetId)
+    } else {
+      if (!imageHistoryNode?.nextNode?.length) return
+      const nextIds = Array.isArray(imageHistoryNode.nextNode) ? imageHistoryNode.nextNode : []
+      if (nextIds.length > 0) {
+        await setNode(nextIds[0])
+      }
     }
   }
 
@@ -247,7 +288,8 @@ function App() {
           <ToolbarRibbon
             onUpload={handleUpload}
             onUndo={prevNode}
-            onRedo={nextNode}
+            onRedo={handleRedo}
+            redoOptions={redoOptions}
             canUndo={!!(imageHistoryNode && imageHistoryNode.prevNode)}
             canRedo={!!(imageHistoryNode && imageHistoryNode.nextNode?.length)}
           />

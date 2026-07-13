@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useState, useEffect } from "react";
 import {
   Upload,
   Scissors,
@@ -15,8 +15,20 @@ import {
   MousePointer,
 } from "lucide-react";
 
-export default function ToolbarRibbon({ onUpload, onUndo, onRedo, canUndo, canRedo }) {
+export default function ToolbarRibbon({ onUpload, onUndo, onRedo, canUndo, canRedo, redoOptions = [] }) {
   const fileInputRef = useRef(null);
+  const [redoDropdownOpen, setRedoDropdownOpen] = useState(false);
+
+  useEffect(() => {
+    if (!redoDropdownOpen) return;
+    const handleOutsideClick = (e) => {
+      if (!e.target.closest(".redo-container")) {
+        setRedoDropdownOpen(false);
+      }
+    };
+    document.addEventListener("click", handleOutsideClick);
+    return () => document.removeEventListener("click", handleOutsideClick);
+  }, [redoDropdownOpen]);
 
   const tools = [
     { label: "Crop", icon: Scissors },
@@ -89,6 +101,59 @@ export default function ToolbarRibbon({ onUpload, onUndo, onRedo, canUndo, canRe
         } else if (tool.label === "Redo") {
           onClick = onRedo;
           disabled = !canRedo;
+        }
+
+        if (tool.label === "Redo") {
+          const handleRedoClick = () => {
+            if (redoOptions.length === 1) {
+              onRedo(redoOptions[0].id);
+            } else if (redoOptions.length > 1) {
+              setRedoDropdownOpen(!redoDropdownOpen);
+            }
+          };
+
+          return (
+            <div key={tool.label} className="redo-container">
+              <button 
+                className="tool-btn" 
+                title={tool.label}
+                onClick={handleRedoClick}
+                disabled={!canRedo}
+              >
+                <Icon size={16} />
+              </button>
+              {redoDropdownOpen && redoOptions.length > 1 && (
+                <div className="redo-dropdown">
+                  {redoOptions.map((option) => (
+                    <button
+                      key={option.id}
+                      className="redo-dropdown-item"
+                      onClick={() => {
+                        onRedo(option.id);
+                        setRedoDropdownOpen(false);
+                      }}
+                    >
+                      {option.imageUrl ? (
+                        <img 
+                          src={option.imageUrl} 
+                          alt={option.label} 
+                          className="redo-dropdown-thumbnail" 
+                        />
+                      ) : (
+                        <div className="redo-dropdown-thumbnail placeholder-thumb">🎨</div>
+                      )}
+                      <div className="redo-dropdown-info">
+                        <span className="redo-dropdown-label">{option.label}</span>
+                        {option.time && (
+                          <span className="redo-dropdown-time">{option.time}</span>
+                        )}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
         }
 
         return (
