@@ -123,7 +123,7 @@ function App() {
     setImageUrl(url)
     setFilterValues({ Brightness: 0, Contrast: 0, Saturation: 0, HueRotation: 0, Blur: 0 })
     setActiveTool('select')
-    const { id } = await image.addImage(file)
+    const { id } = await image.addImage(dataURLtoBlob(canvasRef.current.exportImage()))
     const headNode = await history.addNode({ label: "Uploaded File", time: new Date().toLocaleString(), imageId: id, filename }, null)
     setImageHistoryNode({ ...headNode, filename })
     setHead(headNode)
