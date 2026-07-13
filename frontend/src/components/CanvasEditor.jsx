@@ -222,9 +222,7 @@ const CanvasEditor = forwardRef(function CanvasEditor(
 
     const imgW = imgEl.naturalWidth || imgEl.width
     const imgH = imgEl.naturalHeight || imgEl.height
-    const scale = Math.min(containerW / imgW, containerH / imgH, 1)
-    const scaledW = Math.round(imgW * scale)
-    const scaledH = Math.round(imgH * scale)
+    const scale = Math.min(containerW / imgW, containerH / imgH)
 
     if (bgImageRef.current) {
       canvas.remove(bgImageRef.current)
@@ -232,7 +230,7 @@ const CanvasEditor = forwardRef(function CanvasEditor(
     }
 
     canvas.setViewportTransform([1, 0, 0, 1, 0, 0])
-    canvas.setDimensions({ width: scaledW, height: scaledH })
+    canvas.setDimensions({ width: containerW, height: containerH })
 
     const isSelect = activeToolRef.current === 'select'
     const fabricImage = new fabric.FabricImage(imgEl, {
@@ -243,8 +241,8 @@ const CanvasEditor = forwardRef(function CanvasEditor(
       hoverCursor: isSelect ? 'move' : 'default',
       originX: 'center',
       originY: 'center',
-      left: scaledW / 2,
-      top: scaledH / 2,
+      left: containerW / 2,
+      top: containerH / 2,
     })
 
     canvas.add(fabricImage)
@@ -269,11 +267,17 @@ const CanvasEditor = forwardRef(function CanvasEditor(
     const handleResize = () => {
       const wrapper = wrapperRef.current
       if (!wrapper) return
-      if (bgImageRef.current) return
-      canvas.setDimensions({
-        width: wrapper.clientWidth,
-        height: wrapper.clientHeight,
-      })
+      const containerW = wrapper.clientWidth
+      const containerH = wrapper.clientHeight
+      canvas.setDimensions({ width: containerW, height: containerH })
+      if (bgImageRef.current) {
+        const imgEl = bgImageRef.current.getElement()
+        const imgW = imgEl.naturalWidth || imgEl.width
+        const imgH = imgEl.naturalHeight || imgEl.height
+        const s = Math.min(containerW / imgW, containerH / imgH)
+        bgImageRef.current.scale(s)
+        bgImageRef.current.set({ left: containerW / 2, top: containerH / 2 })
+      }
       canvas.renderAll()
     }
 
