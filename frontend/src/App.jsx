@@ -18,6 +18,8 @@ function App() {
   const [historyVersion, setHistoryVersion] = useState(0)
   const [view, setView] = useState('editor')
   const [redoOptions, setRedoOptions] = useState([])
+  const [canCanvasUndo, setCanCanvasUndo] = useState(false)
+  const [canCanvasRedo, setCanCanvasRedo] = useState(false)
 
   const [activeTool, setActiveTool] = useState('select')
   const [brushColor, setBrushColor] = useState('#FF1E8A')
@@ -32,6 +34,19 @@ function App() {
   })
 
   const canvasRef = useRef(null)
+
+  const handleCanvasHistoryChange = useCallback((undoAvailable, redoAvailable) => {
+    setCanCanvasUndo(undoAvailable)
+    setCanCanvasRedo(redoAvailable)
+  }, [])
+
+  const handleCanvasUndo = useCallback(() => {
+    canvasRef.current?.canvasUndo()
+  }, [])
+
+  const handleCanvasRedo = useCallback(() => {
+    canvasRef.current?.canvasRedo()
+  }, [])
 
   const handleCanvasReady = useCallback((canvas) => {
     canvas.on('object:added', () => {
@@ -329,8 +344,8 @@ function App() {
     const handleKeyDown = (e) => {
       if (e.target.closest('input, textarea, [contenteditable]')) return
       if (e.ctrlKey || e.metaKey) {
-        if (e.key === 'z') { e.preventDefault(); prevNode() }
-        if (e.key === 'y') { e.preventDefault(); nextNode() }
+        if (e.key === 'z') { e.preventDefault(); handleCanvasUndo() }
+        if (e.key === 'y') { e.preventDefault(); handleCanvasRedo() }
         if (e.key === 's') { e.preventDefault(); window.dispatchEvent(new CustomEvent('canvas-save')) }
         return
       }
@@ -345,7 +360,7 @@ function App() {
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [prevNode, nextNode])
+  }, [handleCanvasUndo, handleCanvasRedo])
 
   return (
     <div className="app-layout">
@@ -374,6 +389,10 @@ function App() {
             redoOptions={redoOptions}
             canUndo={!!(imageHistoryNode && imageHistoryNode.prevNode)}
             canRedo={!!(imageHistoryNode && imageHistoryNode.nextNode?.length)}
+            onCanvasUndo={handleCanvasUndo}
+            onCanvasRedo={handleCanvasRedo}
+            canCanvasUndo={canCanvasUndo}
+            canCanvasRedo={canCanvasRedo}
             activeTool={activeTool}
             setActiveTool={setActiveTool}
             hasImage={!!imageUrl}
@@ -405,6 +424,7 @@ function App() {
               onImageDimensions={setImageDimensions}
               onCanvasReady={handleCanvasReady}
               onToolChange={setActiveTool}
+              onCanvasHistoryChange={handleCanvasHistoryChange}
             />
           </div>
           <div className="right-column">

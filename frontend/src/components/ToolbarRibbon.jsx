@@ -13,10 +13,13 @@ import {
   Save,
   Download,
   MousePointer,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 
 export default function ToolbarRibbon({
   onUpload, onUndo, onRedo, canUndo, canRedo,
+  onCanvasUndo, onCanvasRedo, canCanvasUndo, canCanvasRedo,
   activeTool, setActiveTool, hasImage, redoOptions = [],
 }) {
   const fileInputRef = useRef(null);
@@ -52,6 +55,8 @@ export default function ToolbarRibbon({
   const actions = [
     { label: "Undo", icon: Undo2, shortcut: "Ctrl+Z" },
     { label: "Redo", icon: Redo2, shortcut: "Ctrl+Y" },
+    { label: "Previous Node", icon: ChevronLeft },
+    { label: "Next Node", icon: ChevronRight },
     { label: "Export", icon: Download },
   ];
 
@@ -134,9 +139,15 @@ export default function ToolbarRibbon({
         let disabled = false;
 
         if (action.label === "Undo") {
+          onClick = onCanvasUndo;
+          disabled = !canCanvasUndo;
+        } else if (action.label === "Redo") {
+          onClick = onCanvasRedo;
+          disabled = !canCanvasRedo;
+        } else if (action.label === "Previous Node") {
           onClick = onUndo;
           disabled = !canUndo;
-        } else if (action.label === "Redo") {
+        } else if (action.label === "Next Node") {
           onClick = onRedo;
           disabled = !canRedo;
         } else if (action.label === "Export") {
@@ -147,7 +158,7 @@ export default function ToolbarRibbon({
           disabled = !hasImage;
         }
 
-        if (action.label === "Redo") {
+        if (action.label === "Next Node") {
           const handleRedoClick = () => {
             if (redoOptions && redoOptions.length === 1) {
               onRedo(redoOptions[0].id);
