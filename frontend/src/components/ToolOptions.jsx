@@ -1,6 +1,34 @@
 import ColorPicker from './ColorPicker'
 import { useState, useEffect } from 'react'
 
+const TOOL_NAMES = {
+  brush: 'Brush Settings',
+  eraser: 'Eraser Settings',
+  text: 'Text Settings',
+  rect: 'Shape Settings',
+  circle: 'Shape Settings',
+  line: 'Shape Settings',
+  crop: 'Crop Settings',
+  resize: 'Resize Settings',
+  filter: 'Filter Settings',
+}
+
+const TOOLS_WITH_OPTIONS = ['brush', 'eraser', 'text', 'rect', 'circle', 'line', 'crop', 'resize', 'filter']
+
+function CollapsibleGroup({ title, defaultOpen = true, children }) {
+  const [open, setOpen] = useState(defaultOpen)
+
+  return (
+    <div className={`tool-sidebar-group ${open ? 'open' : ''}`}>
+      <button className="tool-sidebar-group-header" onClick={() => setOpen(!open)}>
+        <span>{title}</span>
+        <span className={`tool-sidebar-group-chevron ${open ? 'rotated' : ''}`}>&#9662;</span>
+      </button>
+      {open && <div className="tool-sidebar-group-content">{children}</div>}
+    </div>
+  )
+}
+
 export default function ToolOptions({
   activeTool,
   brushColor,
@@ -15,60 +43,83 @@ export default function ToolOptions({
   onFilterChange,
   imageDimensions,
 }) {
-  if (!activeTool) return null
+  if (!TOOLS_WITH_OPTIONS.includes(activeTool)) return null
 
   return (
-    <div className="tool-options-bar">
-      {(activeTool === 'brush' || activeTool === 'eraser') && (
-        <>
-          {activeTool === 'brush' && <ColorPicker color={brushColor} onChange={setBrushColor} />}
-          <div className="tool-option-group">
-            <label>Size</label>
-            <input
-              type="range"
-              min="1"
-              max="100"
-              value={brushSize}
-              onChange={(e) => setBrushSize(Number(e.target.value))}
-            />
-            <span className="tool-option-value">{brushSize}px</span>
-          </div>
-          <div className="tool-option-group">
-            <label>Opacity</label>
-            <input
-              type="range"
-              min="1"
-              max="100"
-              value={Math.round(brushOpacity * 100)}
-              onChange={(e) => setBrushOpacity(Number(e.target.value) / 100)}
-            />
-            <span className="tool-option-value">{Math.round(brushOpacity * 100)}%</span>
-          </div>
-        </>
-      )}
+    <div className="tool-options-sidebar" key={activeTool}>
+      <div className="tool-options-sidebar-header">
+        <span>{TOOL_NAMES[activeTool] || 'Tool Settings'}</span>
+      </div>
+      <div className="tool-options-sidebar-content">
+        {(activeTool === 'brush' || activeTool === 'eraser') && (
+          <CollapsibleGroup title="Brush">
+            {activeTool === 'brush' && (
+              <div className="tool-sidebar-field">
+                <label>Color</label>
+                <ColorPicker color={brushColor} onChange={setBrushColor} />
+              </div>
+            )}
+            <div className="tool-sidebar-field">
+              <label>Size</label>
+              <div className="tool-sidebar-slider-row">
+                <input
+                  type="range"
+                  min="1"
+                  max="100"
+                  value={brushSize}
+                  onChange={(e) => setBrushSize(Number(e.target.value))}
+                />
+                <span className="tool-option-value">{brushSize}px</span>
+              </div>
+            </div>
+            <div className="tool-sidebar-field">
+              <label>Opacity</label>
+              <div className="tool-sidebar-slider-row">
+                <input
+                  type="range"
+                  min="1"
+                  max="100"
+                  value={Math.round(brushOpacity * 100)}
+                  onChange={(e) => setBrushOpacity(Number(e.target.value) / 100)}
+                />
+                <span className="tool-option-value">{Math.round(brushOpacity * 100)}%</span>
+              </div>
+            </div>
+          </CollapsibleGroup>
+        )}
 
-      {(activeTool === 'text' || activeTool === 'rect' || activeTool === 'circle' || activeTool === 'line') && (
-        <ColorPicker color={brushColor} onChange={setBrushColor} />
-      )}
+        {(activeTool === 'text' || activeTool === 'rect' || activeTool === 'circle' || activeTool === 'line') && (
+          <CollapsibleGroup title="Appearance">
+            <div className="tool-sidebar-field">
+              <label>Color</label>
+              <ColorPicker color={brushColor} onChange={setBrushColor} />
+            </div>
+          </CollapsibleGroup>
+        )}
 
-      {activeTool === 'crop' && (
-        <div className="tool-option-group">
-          <span className="tool-option-hint">Draw a rectangle on the canvas to crop</span>
-          <button className="tool-option-btn" onClick={onApplyCrop}>Apply Crop</button>
-        </div>
-      )}
+        {activeTool === 'crop' && (
+          <CollapsibleGroup title="Crop">
+            <div className="tool-sidebar-field">
+              <span className="tool-option-hint">Draw a rectangle on the canvas to define the crop area.</span>
+            </div>
+            <div className="tool-sidebar-field">
+              <button className="tool-option-btn tool-option-btn--full" onClick={onApplyCrop}>Apply Crop</button>
+            </div>
+          </CollapsibleGroup>
+        )}
 
-      {activeTool === 'resize' && (
-        <ResizeControls onResize={onResize} imageDimensions={imageDimensions} />
-      )}
+        {activeTool === 'resize' && (
+          <CollapsibleGroup title="Canvas Size">
+            <ResizeControls onResize={onResize} imageDimensions={imageDimensions} />
+          </CollapsibleGroup>
+        )}
 
-      {activeTool === 'filter' && (
-        <FilterControls values={filterValues} onChange={onFilterChange} />
-      )}
-
-      {activeTool === 'select' && (
-        <span className="tool-option-hint">Click objects to select. Press Delete to remove.</span>
-      )}
+        {activeTool === 'filter' && (
+          <CollapsibleGroup title="Adjustments">
+            <FilterControls values={filterValues} onChange={onFilterChange} />
+          </CollapsibleGroup>
+        )}
+      </div>
     </div>
   )
 }
@@ -110,8 +161,8 @@ function ResizeControls({ onResize, imageDimensions }) {
   }
 
   return (
-    <div className="resize-controls">
-      <div className="tool-option-group">
+    <div className="resize-controls-sidebar">
+      <div className="tool-sidebar-field">
         <label>Width</label>
         <input
           type="number"
@@ -122,14 +173,7 @@ function ResizeControls({ onResize, imageDimensions }) {
           min="1"
         />
       </div>
-      <button
-        className={`lock-ratio-btn ${lockRatio ? 'locked' : ''}`}
-        onClick={() => setLockRatio(!lockRatio)}
-        title={lockRatio ? 'Unlock ratio' : 'Lock ratio'}
-      >
-        {lockRatio ? '🔗' : '🔓'}
-      </button>
-      <div className="tool-option-group">
+      <div className="tool-sidebar-field">
         <label>Height</label>
         <input
           type="number"
@@ -140,16 +184,28 @@ function ResizeControls({ onResize, imageDimensions }) {
           min="1"
         />
       </div>
-      <button
-        className="tool-option-btn"
-        onClick={() => {
-          const w = parseInt(width)
-          const h = parseInt(height)
-          if (w > 0 && h > 0) onResize(w, h)
-        }}
-      >
-        Resize
-      </button>
+      <div className="tool-sidebar-field tool-sidebar-field--row">
+        <button
+          className={`lock-ratio-btn ${lockRatio ? 'locked' : ''}`}
+          onClick={() => setLockRatio(!lockRatio)}
+          title={lockRatio ? 'Unlock ratio' : 'Lock ratio'}
+        >
+          {lockRatio ? '🔗' : '🔓'}
+        </button>
+        <span className="tool-option-value">{lockRatio ? 'Locked' : 'Unlocked'}</span>
+      </div>
+      <div className="tool-sidebar-field">
+        <button
+          className="tool-option-btn tool-option-btn--full"
+          onClick={() => {
+            const w = parseInt(width)
+            const h = parseInt(height)
+            if (w > 0 && h > 0) onResize(w, h)
+          }}
+        >
+          Resize
+        </button>
+      </div>
     </div>
   )
 }
@@ -164,21 +220,23 @@ function FilterControls({ values, onChange }) {
   ]
 
   return (
-    <div className="filter-controls">
+    <div className="filter-controls-sidebar">
       {filters.map((f) => (
-        <div key={f.key} className="tool-option-group">
+        <div key={f.key} className="tool-sidebar-field">
           <label>{f.label}</label>
-          <input
-            type="range"
-            min={f.min}
-            max={f.max}
-            step={f.step}
-            value={values[f.key] ?? 0}
-            onChange={(e) => onChange(f.key, parseFloat(e.target.value))}
-          />
-          <span className="tool-option-value">
-            {(values[f.key] ?? 0).toFixed(2)}
-          </span>
+          <div className="tool-sidebar-slider-row">
+            <input
+              type="range"
+              min={f.min}
+              max={f.max}
+              step={f.step}
+              value={values[f.key] ?? 0}
+              onChange={(e) => onChange(f.key, parseFloat(e.target.value))}
+            />
+            <span className="tool-option-value">
+              {(values[f.key] ?? 0).toFixed(2)}
+            </span>
+          </div>
         </div>
       ))}
     </div>

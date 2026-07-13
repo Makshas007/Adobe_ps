@@ -377,21 +377,21 @@ function App() {
             setActiveTool={setActiveTool}
             hasImage={!!imageUrl}
           />
+          <ToolOptions
+            activeTool={activeTool}
+            brushColor={brushColor}
+            setBrushColor={setBrushColor}
+            brushSize={brushSize}
+            setBrushSize={setBrushSize}
+            brushOpacity={brushOpacity}
+            setBrushOpacity={setBrushOpacity}
+            onApplyCrop={handleApplyCrop}
+            onResize={handleResize}
+            filterValues={filterValues}
+            onFilterChange={handleFilterChange}
+            imageDimensions={imageDimensions}
+          />
           <div className="canvas-area">
-            <ToolOptions
-              activeTool={activeTool}
-              brushColor={brushColor}
-              setBrushColor={setBrushColor}
-              brushSize={brushSize}
-              setBrushSize={setBrushSize}
-              brushOpacity={brushOpacity}
-              setBrushOpacity={setBrushOpacity}
-              onApplyCrop={handleApplyCrop}
-              onResize={handleResize}
-              filterValues={filterValues}
-              onFilterChange={handleFilterChange}
-              imageDimensions={imageDimensions}
-            />
             <CanvasEditor
               ref={canvasRef}
               imageUrl={imageUrl}
