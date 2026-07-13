@@ -32,6 +32,10 @@ export default function ToolbarRibbon({
     return () => document.removeEventListener("click", handleOutsideClick);
   }, [redoDropdownOpen]);
 
+  useEffect(() => {
+    setRedoDropdownOpen(false);
+  }, [redoOptions]);
+
   const tools = [
     { label: "Select", icon: MousePointer, shortcut: "V" },
     { label: "Crop", icon: Scissors, shortcut: "C" },

@@ -281,7 +281,7 @@ function App() {
     }
   }, [imageHistoryNode, historyVersion])
 
-  const setNode = async (nodeId) => {
+  const setNode = useCallback(async (nodeId) => {
     if (!nodeId) return
     const nextNodeData = await history.getNode(nodeId)
     if (!nextNodeData) return
@@ -296,7 +296,7 @@ function App() {
     } else {
       setImageUrl(null)
     }
-  }
+  }, [])
 
   const nextNode = useCallback(async (targetId) => {
     if (targetId) {
@@ -308,12 +308,12 @@ function App() {
         await setNode(nextIds[0])
       }
     }
-  }, [imageHistoryNode])
+  }, [imageHistoryNode, setNode])
 
   const prevNode = useCallback(async () => {
     if (!imageHistoryNode?.prevNode) return
     await setNode(imageHistoryNode.prevNode)
-  }, [imageHistoryNode])
+  }, [imageHistoryNode, setNode])
 
   const handleEditComplete = async (dataUri, label, filename) => {
     setImageUrl(dataUri)
@@ -409,7 +409,7 @@ function App() {
           </div>
           <div className="right-column">
             <TreePanel headId={head.id} historyVersion={historyVersion} setNode={setNode} currNode={imageHistoryNode} />
-            <ChatWindow imageHistoryNode={imageHistoryNode} head={head} onEditComplete={handleEditComplete} />
+            <ChatWindow imageHistoryNode={imageHistoryNode} canvasURI={canvasRef.current?.exportImage()} head={head} onEditComplete={handleEditComplete} />
           </div>
         </div>
       )}

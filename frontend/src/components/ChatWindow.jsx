@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
+import {image} from '../utilities/indexedDB.js'
+import { blobToDataURL } from '../utilities/type.js'
 
-export default function ChatWindow({ imageHistoryNode, head, onEditComplete }) {
+export default function ChatWindow({ imageHistoryNode, canvasURI, head, onEditComplete }) {
   const [messages, setMessages] = useState([
     { role: 'assistant', text: 'Hello! I can help you edit this image. Try asking me to crop, resize, or apply a filter.' },
   ])
@@ -51,6 +53,19 @@ export default function ChatWindow({ imageHistoryNode, head, onEditComplete }) {
     localStorage.setItem('adobe_mock_ps_chats', JSON.stringify(chats))
   }
 
+  const img_by_id = (id) => {
+    return new Promise((resolve, reject) => {
+      image.getImage(id)
+        .then((res) => {
+          try {
+            blobToDataURL(res, (dat) => resolve(dat));
+          } catch (err) {
+            reject(err);
+          }
+        })
+        .catch((err) => reject(err));
+    });
+  };
   async function handleSend(e) {
     e.preventDefault()
     if (!input.trim() || !imageHistoryNode) return
@@ -63,11 +78,20 @@ export default function ChatWindow({ imageHistoryNode, head, onEditComplete }) {
     })
     setInput('')
 
+    if(canvasURI && canvasURI!== await img_by_id(imageHistoryNode.imgId)){
+      onEditComplete(canvasURI, 'User Edits', data.filename || 'Untitled_Img.jpg')
+      setMessages((prev) => {
+        const updated = [...prev, { role: 'assistant', text: `Applied: User Edits` }]
+        saveChats(updated)
+        return updated
+      })
+    }
+
     try {
       const res = await fetch('/edit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt, image: localStorage.getItem(imageHistoryNode.id) || 'Untitled.jpg' }),
+        body: JSON.stringify({ prompt, image: canvasURI || await img_by_id(imageHistoryNode.imgId) }),
       })
       if (!res.ok) {
         let errorMsg = 'Edit failed. Please try again.'
