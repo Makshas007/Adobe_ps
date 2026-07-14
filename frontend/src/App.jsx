@@ -123,7 +123,18 @@ function App() {
     setImageUrl(url)
     setFilterValues({ Brightness: 0, Contrast: 0, Saturation: 0, HueRotation: 0, Blur: 0 })
     setActiveTool('select')
-    const { id } = await image.addImage(dataURLtoBlob(canvasRef.current.exportImage()))
+    let imageBlob = file
+    if (!imageBlob && canvasRef.current) {
+      const dataUri = canvasRef.current.exportImage()
+      if (dataUri) {
+        imageBlob = dataURLtoBlob(dataUri)
+      }
+    }
+    if (!imageBlob) {
+      alert("No image data available to upload.")
+      return
+    }
+    const { id } = await image.addImage(imageBlob)
     const headNode = await history.addNode({ label: "Uploaded File", time: new Date().toLocaleString(), imageId: id, filename }, null)
     setImageHistoryNode({ ...headNode, filename })
     setHead(headNode)
