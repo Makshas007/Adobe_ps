@@ -72,17 +72,17 @@ export default function ToolbarRibbon({
     formData.append("file", file);
 
     try {
-      const res = await fetch("/upload", {
-        method: "POST",
-        body: formData,
-      });
-      if (!res.ok) {
-        alert("Backend returned error: " + res.statusText);
-        return;
-      }
-      const data = await res.json();
+      // const res = await fetch("/upload", {
+      //   method: "POST",
+      //   body: formData,
+      // });
+      // if (!res.ok) {
+      //   alert("Backend returned error: " + res.statusText);
+      //   return;
+      // }
+      // const data = await res.json();
       const localUrl = URL.createObjectURL(file);
-      onUpload({ url: localUrl, filename: data.filename, file });
+      onUpload({ url: localUrl, filename: "dummy.png", file });
     } catch (err) {
       alert("Upload failed. Make sure the backend is running! Error: " + err.message);
       return;
