@@ -15,7 +15,7 @@ function getImageBounds(img) {
 }
 
 const CanvasEditor = forwardRef(function CanvasEditor(
-  { imageUrl, activeTool, brushColor, brushSize, brushOpacity, onCursorMove, onZoomChange, onImageDimensions, onCanvasReady, onToolChange, onCanvasHistoryChange, currentNodeId },
+  { imageUrl, activeTool, brushColor, brushSize, brushOpacity, onCursorMove, onZoomChange, onImageDimensions, onCanvasReady, onToolChange, onCanvasHistoryChange, onImageLoaded, currentNodeId },
   ref
 ) {
   const canvasRef = useRef(null)
@@ -140,6 +140,8 @@ const CanvasEditor = forwardRef(function CanvasEditor(
 
   const onToolChangeRef = useRef(onToolChange)
   useEffect(() => { onToolChangeRef.current = onToolChange }, [onToolChange])
+  const onImageLoadedRef = useRef(onImageLoaded)
+  useEffect(() => { onImageLoadedRef.current = onImageLoaded }, [onImageLoaded])
 
   useImperativeHandle(ref, () => ({
     getCanvas: () => fabricRef.current,
@@ -486,6 +488,7 @@ const CanvasEditor = forwardRef(function CanvasEditor(
       const currentCanvas = fabricRef.current
       if (!currentCanvas || currentCanvas !== canvas) return
       fitImageToContainer(currentCanvas, imgEl)
+      onImageLoadedRef.current?.()
       if (pendingRestoreRef.current && canvasHistoryIndexRef.current >= 0) {
         skipSaveRef.current = true
         const state = JSON.parse(canvasHistoryRef.current[canvasHistoryIndexRef.current])

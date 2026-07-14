@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react'
 
 // https://vite.dev/config/
 
-const SERVER = 'https://rap-sierra-drawn-revision.trycloudflare.com'
+const SERVER = 'http://localhost:8000'
 export default defineConfig({
   plugins: [react()],
   server: {

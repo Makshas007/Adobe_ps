@@ -34,6 +34,7 @@ function App() {
   })
 
   const canvasRef = useRef(null)
+  const resolveImageLoadedRef = useRef(null)
 
   const handleCanvasHistoryChange = useCallback((undoAvailable, redoAvailable) => {
     setCanCanvasUndo(undoAvailable)
@@ -119,10 +120,11 @@ function App() {
     }
   }, [])
 
-  const handleUpload = async ({ url, filename, file }) => {
+  const handleUpload = async ({ url, filename }) => {
     setImageUrl(url)
     setFilterValues({ Brightness: 0, Contrast: 0, Saturation: 0, HueRotation: 0, Blur: 0 })
     setActiveTool('select')
+    await new Promise(resolve => { resolveImageLoadedRef.current = resolve })
     const { id } = await image.addImage(dataURLtoBlob(canvasRef.current.exportImage()))
     const headNode = await history.addNode({ label: "Uploaded File", time: new Date().toLocaleString(), imageId: id, filename }, null)
     setImageHistoryNode({ ...headNode, filename })
@@ -426,6 +428,7 @@ function App() {
               onCanvasReady={handleCanvasReady}
               onToolChange={setActiveTool}
               onCanvasHistoryChange={handleCanvasHistoryChange}
+              onImageLoaded={() => resolveImageLoadedRef.current?.()}
             />
           </div>
           <div className="right-column">
