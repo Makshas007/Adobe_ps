@@ -15,10 +15,13 @@ import {
   MousePointer,
   ChevronLeft,
   ChevronRight,
+  PlusIcon,
+  UserPlus,
+  PlusSquareIcon,
 } from "lucide-react";
 
 export default function ToolbarRibbon({
-  onUpload, onUndo, onRedo, canUndo, canRedo,
+  onUpload, onUndo, onRedo, canUndo, canRedo, newChat,
   onCanvasUndo, onCanvasRedo, canCanvasUndo, canCanvasRedo,
   activeTool, setActiveTool, hasImage, redoOptions = [],
 }) {
@@ -57,6 +60,7 @@ export default function ToolbarRibbon({
     { label: "Redo", icon: Redo2, shortcut: "Ctrl+Y" },
     { label: "Previous Node", icon: ChevronLeft },
     { label: "Next Node", icon: ChevronRight },
+    {label:"New Chat", icon:PlusSquareIcon},
     { label: "Export", icon: Download },
   ];
 
@@ -150,6 +154,8 @@ export default function ToolbarRibbon({
         } else if (action.label === "Next Node") {
           onClick = onRedo;
           disabled = !canRedo;
+        } else if (action.label === "New Chat") {
+          onClick = newChat;
         } else if (action.label === "Export") {
           onClick = () => {
             const event = new CustomEvent('canvas-export')

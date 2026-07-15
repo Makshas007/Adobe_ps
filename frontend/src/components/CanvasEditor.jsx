@@ -342,6 +342,15 @@ const CanvasEditor = forwardRef(function CanvasEditor(
     },
     canvasUndo,
     canvasRedo,
+    clear: () => {
+      const canvas = fabricRef.current
+      if (!canvas) return
+      canvas.clear()
+      bgImageRef.current = null
+      canvasHistoryRef.current = []
+      canvasHistoryIndexRef.current = -1
+      notifyHistoryChange()
+    },
   }))
 
   const fitImageToContainer = useCallback((canvas, imgEl) => {
@@ -476,7 +485,12 @@ const CanvasEditor = forwardRef(function CanvasEditor(
 
   useEffect(() => {
     const canvas = fabricRef.current
-    if (!canvas || !imageUrl) return
+    if (!canvas) return
+    if (!imageUrl) {
+      canvas.clear()
+      bgImageRef.current = null
+      return
+    }
 
     canvas.getObjects().forEach(obj => {
       if (obj !== bgImageRef.current) canvas.remove(obj)

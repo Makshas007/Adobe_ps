@@ -152,6 +152,34 @@ function App() {
     return findLatestNode(childIds[childIds.length - 1])
   }
 
+  const newChat=()=>{
+    setImageUrl(null)
+    setImageHistoryNode(null)
+    setHead({})
+    setHistoryVersion(0)
+    setView('editor')
+    setRedoOptions([])
+    setCanCanvasUndo(false)
+    setCanCanvasRedo(false)
+    setActiveTool('select')
+    setBrushColor('#FF1E8A')
+    setBrushSize(5)
+    setBrushOpacity(1)
+    setZoom(100)
+    setImageDimensions(null)
+    setCursorPos(null)
+    setObjectCount(0)
+    setFilterValues({
+      Brightness: 0,
+      Contrast: 0,
+      Saturation: 0,
+      HueRotation: 0,
+      Blur: 0
+    })
+    canvasRef.current?.clear()
+    window.history.pushState(null, '', '/');
+  }
+
   const handleSelectLibraryNode = async (nodeId) => {
     try {
       const node = await history.getNode(nodeId)
@@ -395,6 +423,7 @@ function App() {
             onCanvasRedo={handleCanvasRedo}
             canCanvasUndo={canCanvasUndo}
             canCanvasRedo={canCanvasRedo}
+            newChat={newChat}
             activeTool={activeTool}
             setActiveTool={setActiveTool}
             hasImage={!!imageUrl}
