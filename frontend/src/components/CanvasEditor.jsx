@@ -598,6 +598,7 @@ const CanvasEditor = forwardRef(function CanvasEditor(
         if (shape) { canvas.add(shape); shapeRef.current = shape }
       } else if (tool === 'crop') {
         if (!bgImageRef.current) return
+        if (cropRectRef.current) { canvas.remove(cropRectRef.current); cropRectRef.current = null }
         const pointer = canvas.getScenePoint(opt.e)
         shapeStartPoint.current = { x: pointer.x, y: pointer.y }
 
