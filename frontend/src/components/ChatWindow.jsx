@@ -70,9 +70,8 @@ export default function ChatWindow({ imageHistoryNode, head, onEditComplete, can
   };
   const handleSave = useCallback(async () => {
     if (!canvasRef?.current || !imageHistoryNode) return
-    const canvasURI = canvasRef.current.exportImage()
-    const dbImage = await img_by_id(imageHistoryNode.imageId)
-    if (canvasURI && canvasURI !== dbImage) {
+    if (canvasRef.current.hasUnsavedChanges()) {
+      const canvasURI = canvasRef.current.exportImage()
       onEditComplete(canvasURI, 'User Edits', localStorage.getItem(head.id) || 'Untitled_Img.jpg')
       setMessages((prev) => {
         const updated = [...prev, { role: 'assistant', text: `Applied: User Edits` }]
@@ -96,8 +95,7 @@ export default function ChatWindow({ imageHistoryNode, head, onEditComplete, can
     if (!input.trim() || !imageHistoryNode) return
     
     const canvasURI = canvasRef?.current?.exportImage()
-    const dbImage = await img_by_id(imageHistoryNode.imageId)
-    if (canvasURI && canvasURI !== dbImage) {
+    if (canvasRef?.current?.hasUnsavedChanges()) {
       onEditComplete(canvasURI, 'User Edits', localStorage.getItem(head.id) || 'Untitled_Img.jpg')
       setMessages((prev) => {
         const updated = [...prev, { role: 'assistant', text: `Applied: User Edits` }]

@@ -330,6 +330,12 @@ const CanvasEditor = forwardRef(function CanvasEditor(
       if (!canvas) return 0
       return canvas.getObjects().filter(o => o !== bgImageRef.current).length
     },
+    hasUnsavedChanges: () => {
+      const canvas = fabricRef.current
+      if (!canvas || !bgImageRef.current) return false
+      const userObjects = canvas.getObjects().filter(o => o !== bgImageRef.current && !o.isCropRect)
+      return userObjects.length > 0
+    },
     removeSelected: () => {
       const canvas = fabricRef.current
       if (!canvas) return
