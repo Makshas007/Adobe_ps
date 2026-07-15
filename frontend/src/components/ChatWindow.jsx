@@ -151,6 +151,7 @@ export default function ChatWindow({ imageHistoryNode, head, onEditComplete, can
         saveChats(updated)
         return updated
       })
+      setDisabledMsg("")
     }
     setDisabledMsg("")
   }
