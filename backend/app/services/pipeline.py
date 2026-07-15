@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gc
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -403,6 +404,11 @@ class PipelineExecutor:
                     step_index + 1, len(plan), op_name, step_duration,
                 )
 
+                if context.get("mask") is not None and op_name != "segment":
+                    context.pop("mask", None)
+
+                gc.collect()
+
             except Exception as exc:
                 logger.error(
                     "Pipeline step %d (%s) failed: %s",
@@ -416,6 +422,7 @@ class PipelineExecutor:
                 }
                 steps.append(error_step)
                 self.model_manager.unload_current()
+                gc.collect()
                 raise RuntimeError(
                     f"Pipeline failed at step {step_index + 1} ({op_name}): {exc}"
                 ) from exc

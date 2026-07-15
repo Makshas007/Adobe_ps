@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gc
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -30,7 +31,19 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    app_logger.info("Shutting down Adobe Mock PS backend")
+    app_logger.info("Shutting down Adobe Mock PS backend — cleaning up models and GPU memory")
+    try:
+        from app.services.model_manager import ModelManager
+        manager = ModelManager()
+        if manager.has_loaded_model:
+            app_logger.info("Unloading loaded model on shutdown")
+            manager.unload_current()
+        from app.utils.gpu import clear_gpu
+        clear_gpu()
+        gc.collect()
+        app_logger.info("Shutdown cleanup complete")
+    except Exception as shutdown_exc:
+        app_logger.warning("Shutdown cleanup encountered an issue: %s", shutdown_exc)
 
 
 app = FastAPI(

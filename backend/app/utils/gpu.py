@@ -66,6 +66,27 @@ def gpu_memory_usage() -> str:
     )
 
 
+def gpu_memory_summary() -> str:
+    torch = _get_torch()
+    if not cuda_available():
+        return "CUDA not available"
+    stats = torch.cuda.memory_stats()
+    active_bytes = stats.get("active_bytes.all.current", 0)
+    inactive_bytes = stats.get("inactive_bytes.all.current", 0)
+    allocated = torch.cuda.memory_allocated() / 1024**3
+    reserved = torch.cuda.memory_reserved() / 1024**3
+    total = torch.cuda.get_device_properties(0).total_memory / 1024**3
+    active = active_bytes / 1024**3
+    inactive = inactive_bytes / 1024**3
+    return (
+        f"Allocated: {allocated:.2f} GB, "
+        f"Active: {active:.2f} GB, "
+        f"Inactive: {inactive:.2f} GB, "
+        f"Reserved: {reserved:.2f} GB, "
+        f"Total: {total:.2f} GB"
+    )
+
+
 def move_to_device(
     model: Any,
     device: Any,

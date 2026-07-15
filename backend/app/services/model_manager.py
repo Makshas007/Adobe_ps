@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gc
 import time
 from enum import Enum
 from typing import Any, Dict, Optional
@@ -61,6 +62,7 @@ class ModelManager:
             self._loaded_time = 0.0
             if getattr(self.device, "type", "") == "cuda":
                 clear_gpu()
+            gc.collect()
 
     def _ensure_loaded(self, model_type: ModelType, load_fn: Any) -> Any:
         if self._loaded_type == model_type and self._loaded_model is not None:
