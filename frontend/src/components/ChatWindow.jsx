@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import {image, messages as messageStore} from '../utilities/indexedDB.js'
+import {image} from '../utilities/indexedDB.js'
 import { blobToDataURL } from '../utilities/type.js'
 
 export default function ChatWindow({ imageHistoryNode, head, onEditComplete, canvasRef }) {
@@ -9,6 +9,7 @@ export default function ChatWindow({ imageHistoryNode, head, onEditComplete, can
   const [input, setInput] = useState('')
   const [disabledMsg, setDisabledMsg] = useState('')
 
+  // Load chat messages when active head changes
   useEffect(() => {
     if (!head || !head.id) {
       setMessages([
@@ -17,24 +18,40 @@ export default function ChatWindow({ imageHistoryNode, head, onEditComplete, can
       return
     }
 
-    const loadMessages = async () => {
-      const saved = await messageStore.get(head.id)
-      if (saved) {
-        setMessages(saved.messages)
-      } else {
-        const initialMessages = [
-          { role: 'assistant', text: 'Hello! I can help you edit this image. Try asking me to crop, resize, or apply a filter.' },
-        ]
-        await messageStore.save(head.id, initialMessages, Date.now())
-        setMessages(initialMessages)
+    const chats = JSON.parse(localStorage.getItem('adobe_mock_ps_chats') || '{}')
+    const currentChat = chats[head.id]
+
+    if (currentChat) {
+      setMessages(currentChat.messages)
+    } else {
+      const initialMessages = [
+        { role: 'assistant', text: 'Hello! I can help you edit this image. Try asking me to crop, resize, or apply a filter.' },
+      ]
+      chats[head.id] = {
+        id: head.id,
+        title: localStorage.getItem(head.id) || 'Untitled Image',
+        messages: initialMessages,
+        timestamp: Date.now()
       }
+      localStorage.setItem('adobe_mock_ps_chats', JSON.stringify(chats))
+      setMessages(initialMessages)
     }
-    loadMessages()
   }, [head?.id])
 
-  const saveChats = async (newMessages) => {
+  const saveChats = (newMessages) => {
     if (!head || !head.id) return
-    await messageStore.save(head.id, newMessages, Date.now())
+    const chats = JSON.parse(localStorage.getItem('adobe_mock_ps_chats') || '{}')
+    if (!chats[head.id]) {
+      chats[head.id] = {
+        id: head.id,
+        title: localStorage.getItem(head.id) || 'Untitled Image',
+        messages: [],
+        timestamp: Date.now()
+      }
+    }
+    chats[head.id].messages = newMessages
+    chats[head.id].timestamp = Date.now()
+    localStorage.setItem('adobe_mock_ps_chats', JSON.stringify(chats))
   }
 
   const img_by_id = (id) => {
@@ -56,7 +73,7 @@ export default function ChatWindow({ imageHistoryNode, head, onEditComplete, can
     const canvasURI = canvasRef.current.exportImage()
     const dbImage = await img_by_id(imageHistoryNode.imageId)
     if (canvasURI && canvasURI !== dbImage) {
-      onEditComplete(canvasURI, 'User Edits', head.filename || 'Untitled_Img.jpg')
+      onEditComplete(canvasURI, 'User Edits', localStorage.getItem(head.id) || 'Untitled_Img.jpg')
       setMessages((prev) => {
         const updated = [...prev, { role: 'assistant', text: `Applied: User Edits` }]
         saveChats(updated)
@@ -81,7 +98,7 @@ export default function ChatWindow({ imageHistoryNode, head, onEditComplete, can
     const canvasURI = canvasRef?.current?.exportImage()
     const dbImage = await img_by_id(imageHistoryNode.imageId)
     if (canvasURI && canvasURI !== dbImage) {
-      onEditComplete(canvasURI, 'User Edits', head.filename || 'Untitled_Img.jpg')
+      onEditComplete(canvasURI, 'User Edits', localStorage.getItem(head.id) || 'Untitled_Img.jpg')
       setMessages((prev) => {
         const updated = [...prev, { role: 'assistant', text: `Applied: User Edits` }]
         saveChats(updated)
@@ -123,7 +140,7 @@ export default function ChatWindow({ imageHistoryNode, head, onEditComplete, can
       data.steps.forEach(
         (step, i) => label += (i + 1 === data.steps.length) ? step.operation : step.operation + ' -> '
       )
-      onEditComplete(dataUri, label, head.filename || 'Untitled_Img.jpg')
+      onEditComplete(dataUri, label, localStorage.getItem(head.id) || 'Untitled_Img.jpg')
       setMessages((prev) => {
         const updated = [...prev, { role: 'assistant', text: `Applied: ${prompt}` }]
         saveChats(updated)

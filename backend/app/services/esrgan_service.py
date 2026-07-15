@@ -4,6 +4,8 @@ from pathlib import Path
 from typing import Any, Optional
 
 from PIL import Image
+import torch
+import torch.nn as nn
 
 from app.utils.gpu import gpu_memory_usage
 from app.utils.logger import get_logger
@@ -18,8 +20,6 @@ class ESRGANService:
         self.dtype: Optional[Any] = None
 
     def load_model(self, model_path: str = "") -> None:
-        import torch
-
         model_id = model_path or "weights/ESRGAN"
         logger.info("Loading ESRGAN model from: %s", model_id)
         logger.info("GPU memory before loading ESRGAN: %s", gpu_memory_usage())
@@ -39,7 +39,38 @@ class ESRGANService:
             logger.warning("Could not load ESRGAN model: %s. Using fallback upscale.", exc)
             self.model = None
 
-import torch.nn as nn
+    @torch.inference_mode()
+    def upscale(self, image: Image.Image) -> Image.Image:
+        if self.model is None:
+            logger.info("No ESRGAN model available, using PIL bicubic upscale (4x)")
+            w, h = image.size
+            return image.resize((w * 4, h * 4), Image.Resampling.BICUBIC)
+
+        import torchvision.transforms.functional as TF
+
+        input_tensor = TF.to_tensor(image).unsqueeze(0).to(self.device, dtype=self.dtype)
+        logger.info("Upscaling image: %s", image.size)
+
+        output_tensor = self.model(input_tensor)
+        output_tensor = output_tensor.clamp(0, 1)
+
+        result = TF.to_pil_image(output_tensor.squeeze(0).cpu())
+        logger.info("Upscaled to: %s", result.size)
+        return result
+
+    def save_output(self, image: Image.Image, output_path: Path) -> Path:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        image.save(output_path)
+        logger.info("ESRGAN output saved: %s", output_path)
+        return output_path
+
+    def unload(self) -> None:
+        if self.model is not None:
+            logger.info("Unloading ESRGAN model")
+            del self.model
+            self.model = None
+            from app.utils.gpu import clear_gpu
+            clear_gpu()
 
 class RRDB(nn.Module):
     def __init__(self, channels: int = 64) -> None:
@@ -79,36 +110,3 @@ class ESRGAN(nn.Module):
         out = self.upsample(feat)
         out = self.conv_last(out)
         return out
-
-    @torch.inference_mode()
-    def upscale(self, image: Image.Image) -> Image.Image:
-        if self.model is None:
-            logger.info("No ESRGAN model available, using PIL bicubic upscale (4x)")
-            w, h = image.size
-            return image.resize((w * 4, h * 4), Image.Resampling.BICUBIC)
-
-        import torchvision.transforms.functional as TF
-
-        input_tensor = TF.to_tensor(image).unsqueeze(0).to(self.device, dtype=self.dtype)
-        logger.info("Upscaling image: %s", image.size)
-
-        output_tensor = self.model(input_tensor)
-        output_tensor = output_tensor.clamp(0, 1)
-
-        result = TF.to_pil_image(output_tensor.squeeze(0).cpu())
-        logger.info("Upscaled to: %s", result.size)
-        return result
-
-    def save_output(self, image: Image.Image, output_path: Path) -> Path:
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        image.save(output_path)
-        logger.info("ESRGAN output saved: %s", output_path)
-        return output_path
-
-    def unload(self) -> None:
-        if self.model is not None:
-            logger.info("Unloading ESRGAN model")
-            del self.model
-            self.model = None
-            from app.utils.gpu import clear_gpu
-            clear_gpu()

@@ -7,7 +7,7 @@ import CanvasEditor from './components/CanvasEditor'
 import ToolOptions from './components/ToolOptions'
 import LibraryView from './components/LibraryView'
 import ChatHistoryView from './components/ChatHistoryView'
-import { image, history, messages, waitForDB } from './utilities/indexedDB.js'
+import { image, history, waitForDB } from './utilities/indexedDB.js'
 import './App.css'
 import { blobToDataURL, dataURLtoBlob } from './utilities/type.js'
 
@@ -129,9 +129,17 @@ function App() {
     const headNode = await history.addNode({ label: "Uploaded File", time: new Date().toLocaleString(), imageId: id, filename }, null)
     setImageHistoryNode({ ...headNode, filename })
     setHead(headNode)
-    await messages.save(headNode.id, [
-      { role: 'assistant', text: 'Hello! I can help you edit this image. Try asking me to crop, resize, or apply a filter.' }
-    ], Date.now())
+    localStorage.setItem(headNode.id, filename)
+    const chats = JSON.parse(localStorage.getItem('adobe_mock_ps_chats') || '{}')
+    chats[headNode.id] = {
+      id: headNode.id,
+      title: filename,
+      messages: [
+        { role: 'assistant', text: 'Hello! I can help you edit this image. Try asking me to crop, resize, or apply a filter.' }
+      ],
+      timestamp: Date.now()
+    }
+    localStorage.setItem('adobe_mock_ps_chats', JSON.stringify(chats))
     window.history.pushState(null, '', '/' + headNode.id)
     setHistoryVersion(v => v + 1)
   }
@@ -212,7 +220,10 @@ function App() {
   const handleDeleteChat = async (chatId) => {
     try {
       await history.delete(chatId)
-      await messages.delete(chatId)
+      localStorage.removeItem(chatId)
+      const chats = JSON.parse(localStorage.getItem('adobe_mock_ps_chats') || '{}')
+      delete chats[chatId]
+      localStorage.setItem('adobe_mock_ps_chats', JSON.stringify(chats))
       if (head && head.id === chatId) {
         setHead({})
         setImageHistoryNode(null)
@@ -229,6 +240,32 @@ function App() {
     const initLoad = async () => {
       try {
         await waitForDB()
+        const heads = await history.getHeads()
+        if (heads && heads.length > 0) {
+          const chats = JSON.parse(localStorage.getItem('adobe_mock_ps_chats') || '{}')
+          let updated = false
+          for (const headNode of heads) {
+            if (headNode.id) {
+              if (!localStorage.getItem(headNode.id)) {
+                localStorage.setItem(headNode.id, headNode.filename || 'Untitled Upload')
+              }
+              if (!chats[headNode.id]) {
+                chats[headNode.id] = {
+                  id: headNode.id,
+                  title: headNode.filename || 'Untitled Upload',
+                  messages: [
+                    { role: 'assistant', text: 'Hello! I can help you edit this image. Try asking me to crop, resize, or apply a filter.' }
+                  ],
+                  timestamp: Date.now()
+                }
+                updated = true
+              }
+            }
+          }
+          if (updated) {
+            localStorage.setItem('adobe_mock_ps_chats', JSON.stringify(chats))
+          }
+        }
         const uploadId = location.pathname.split('/')[1]
         const node = await history.getNode(uploadId)
         if (node) {
@@ -328,6 +365,7 @@ function App() {
     const blob = dataURLtoBlob(dataUri)
     const { id } = await image.addImage(blob)
     const node = await history.addNode({ label, time: new Date().toLocaleString(), imageId: id, filename }, imageHistoryNode.id)
+    localStorage.setItem(node.id, filename)
     setImageHistoryNode(node)
     setHistoryVersion(v => v + 1)
   }
