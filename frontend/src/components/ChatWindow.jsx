@@ -127,6 +127,7 @@ export default function ChatWindow({ imageHistoryNode, head, onEditComplete, can
         setMessages((prev) => {
           const updated = [...prev, { role: 'assistant', text: `Error: ${errorMsg}` }]
           saveChats(updated)
+          setDisabledMsg("")
           return updated
         })
         return
