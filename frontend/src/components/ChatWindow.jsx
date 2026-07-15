@@ -91,7 +91,7 @@ export default function ChatWindow({ imageHistoryNode, head, onEditComplete, can
   }, [handleSave])
 
   async function handleSend(e) {
-    setDisabledMsg("Editing in progress, Please Wait")
+    setDisabledMsg("Editing in progress, Please Wait...")
     e.preventDefault()
     if (!input.trim() || !imageHistoryNode) return
     
@@ -157,6 +157,12 @@ export default function ChatWindow({ imageHistoryNode, head, onEditComplete, can
     setDisabledMsg("")
   }
 
+  const placeholder=()=>{
+    if(imageHistoryNode && !disabledMsg )return"Ask me to edit the image...";
+    else if(disabledMsg)return disabledMsg;
+    else return "Upload an image first";
+  }
+
   return (
     <aside className="chat-window">
       <h2>Chat</h2>
@@ -172,10 +178,10 @@ export default function ChatWindow({ imageHistoryNode, head, onEditComplete, can
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder={imageHistoryNode ? "Ask me to edit the image..." :disabledMsg? disabledMsg:"Upload an image first"}
-          disabled={!imageHistoryNode && disabledMsg.length}
+          placeholder={placeholder()}
+          disabled={!imageHistoryNode || disabledMsg.length!==0}
         />
-        <button type="submit" disabled={!imageHistoryNode}>Send</button>
+        <button type="submit" disabled={!imageHistoryNode || disabledMsg.length!==0}>Send</button>
       </form>
     </aside>
   )
