@@ -15,7 +15,7 @@ function getImageBounds(img) {
 }
 
 const CanvasEditor = forwardRef(function CanvasEditor(
-  { imageUrl, activeTool, brushColor, brushSize, brushOpacity, onCursorMove, onZoomChange, onImageDimensions, onCanvasReady, onToolChange, onCanvasHistoryChange, onImageLoaded, currentNodeId },
+  { imageUrl, activeTool, brushColor, brushSize, brushOpacity, onCursorMove, onZoomChange, onImageDimensions, onCanvasReady, onToolChange, onCanvasHistoryChange, onImageLoaded, currentNodeId, onSelectionChange },
   ref
 ) {
   const canvasRef = useRef(null)
@@ -55,8 +55,12 @@ const CanvasEditor = forwardRef(function CanvasEditor(
     if (skipSaveRef.current) return
     const canvas = fabricRef.current
     if (!canvas) return
-    const objects = canvas.getObjects().filter(o => o !== bgImageRef.current && !o.isCropRect)
-    const state = JSON.stringify(objects.map(o => o.toJSON(['isCropRect', 'isEraser'])))
+    const objects = canvas.getObjects().filter(o => !o.isCropRect)
+    const bgSrc = bgImageRef.current?.getElement()?.src || null
+    const state = JSON.stringify({
+      objects: objects.map(o => o.toJSON(['isCropRect', 'isEraser'])),
+      bgSrc,
+    })
     if (canvasHistoryIndexRef.current >= 0 &&
         canvasHistoryRef.current[canvasHistoryIndexRef.current] === state) return
     canvasHistoryRef.current = canvasHistoryRef.current.slice(0, canvasHistoryIndexRef.current + 1)
@@ -69,21 +73,61 @@ const CanvasEditor = forwardRef(function CanvasEditor(
     notifyHistoryChange()
   }, [notifyHistoryChange])
 
+  function restoreBackground(canvas, bgSrc) {
+    if (!bgSrc || !canvas) return Promise.resolve()
+    if (bgImageRef.current && bgImageRef.current.getElement().src === bgSrc) return Promise.resolve()
+    return new Promise((resolve) => {
+      const imgEl = new window.Image()
+      imgEl.onload = () => {
+        const wrapper = wrapperRef.current
+        const containerW = wrapper ? wrapper.clientWidth : 800
+        const containerH = wrapper ? wrapper.clientHeight : 600
+        const imgW = imgEl.naturalWidth || imgEl.width
+        const imgH = imgEl.naturalHeight || imgEl.height
+        const scale = Math.min(containerW / imgW, containerH / imgH)
+        if (bgImageRef.current) {
+          canvas.remove(bgImageRef.current)
+          bgImageRef.current = null
+        }
+        canvas.setViewportTransform([1, 0, 0, 1, 0, 0])
+        canvas.setDimensions({ width: containerW, height: containerH })
+        const fabricImage = new fabric.FabricImage(imgEl, {
+          selectable: false, evented: false, hasControls: false, hasBorders: false,
+          hoverCursor: 'default', originX: 'center', originY: 'center',
+          left: containerW / 2, top: containerH / 2,
+        })
+        fabricImage.scale(scale)
+        bgImageRef.current = fabricImage
+        canvas.add(fabricImage)
+        canvas.sendObjectToBack(fabricImage)
+        resolve()
+      }
+      imgEl.onerror = () => resolve()
+      imgEl.src = bgSrc
+    })
+  }
+
   const canvasUndo = useCallback(() => {
     if (canvasHistoryIndexRef.current <= 0) return
     canvasHistoryIndexRef.current--
     const canvas = fabricRef.current
     if (!canvas) return
     skipSaveRef.current = true
+    const state = JSON.parse(canvasHistoryRef.current[canvasHistoryIndexRef.current])
+    const objects = state.objects || state
+    const bgSrc = state.bgSrc || null
     const toRemove = canvas.getObjects().filter(o => o !== bgImageRef.current && !o.isCropRect)
     toRemove.forEach(o => canvas.remove(o))
-    const state = JSON.parse(canvasHistoryRef.current[canvasHistoryIndexRef.current])
-    fabric.util.enlivenObjects(state).then(objects => {
-      objects.forEach(o => canvas.add(o))
-      canvas.renderAll()
-      skipSaveRef.current = false
-      notifyHistoryChange()
-    })
+    const restoreObjects = () => {
+      fabric.util.enlivenObjects(objects).then(newObjects => {
+        newObjects.forEach(o => canvas.add(o))
+        canvas.renderAll()
+        skipSaveRef.current = false
+        notifyHistoryChange()
+      })
+    }
+    if (bgSrc) restoreBackground(canvas, bgSrc).then(restoreObjects)
+    else restoreObjects()
   }, [notifyHistoryChange])
 
   const canvasRedo = useCallback(() => {
@@ -92,15 +136,21 @@ const CanvasEditor = forwardRef(function CanvasEditor(
     const canvas = fabricRef.current
     if (!canvas) return
     skipSaveRef.current = true
+    const state = JSON.parse(canvasHistoryRef.current[canvasHistoryIndexRef.current])
+    const objects = state.objects || state
+    const bgSrc = state.bgSrc || null
     const toRemove = canvas.getObjects().filter(o => o !== bgImageRef.current && !o.isCropRect)
     toRemove.forEach(o => canvas.remove(o))
-    const state = JSON.parse(canvasHistoryRef.current[canvasHistoryIndexRef.current])
-    fabric.util.enlivenObjects(state).then(objects => {
-      objects.forEach(o => canvas.add(o))
-      canvas.renderAll()
-      skipSaveRef.current = false
-      notifyHistoryChange()
-    })
+    const restoreObjects = () => {
+      fabric.util.enlivenObjects(objects).then(newObjects => {
+        newObjects.forEach(o => canvas.add(o))
+        canvas.renderAll()
+        skipSaveRef.current = false
+        notifyHistoryChange()
+      })
+    }
+    if (bgSrc) restoreBackground(canvas, bgSrc).then(restoreObjects)
+    else restoreObjects()
   }, [notifyHistoryChange])
 
   useEffect(() => {
@@ -148,9 +198,73 @@ const CanvasEditor = forwardRef(function CanvasEditor(
   useEffect(() => { onToolChangeRef.current = onToolChange }, [onToolChange])
   const onImageLoadedRef = useRef(onImageLoaded)
   useEffect(() => { onImageLoadedRef.current = onImageLoaded }, [onImageLoaded])
+  const onSelectionChangeRef = useRef(onSelectionChange)
+  useEffect(() => { onSelectionChangeRef.current = onSelectionChange }, [onSelectionChange])
+
+  function getSelectedObjectData() {
+    const canvas = fabricRef.current
+    if (!canvas) return null
+    const obj = canvas.getActiveObject()
+    if (!obj || obj === bgImageRef.current) return null
+    const data = {
+      type: obj.type,
+      left: Math.round(obj.left),
+      top: Math.round(obj.top),
+      width: Math.round(obj.getScaledWidth()),
+      height: Math.round(obj.getScaledHeight()),
+      angle: Math.round(obj.angle || 0),
+      scaleX: obj.scaleX,
+      scaleY: obj.scaleY,
+      fill: obj.fill,
+      stroke: obj.stroke,
+      strokeWidth: obj.strokeWidth,
+      opacity: obj.opacity,
+    }
+    if (obj.type === 'i-text' || obj.type === 'textbox') {
+      data.fontSize = obj.fontSize
+      data.fontFamily = obj.fontFamily
+      data.fontWeight = obj.fontWeight
+      data.textAlign = obj.textAlign
+    }
+    if (obj.type === 'ellipse') {
+      data.rx = obj.rx
+      data.ry = obj.ry
+    }
+    if (obj.type === 'rect') {
+      data.rx = obj.rx || 0
+      data.ry = obj.ry || 0
+    }
+    if (obj.type === 'line') {
+      data.x1 = obj.x1
+      data.y1 = obj.y1
+      data.x2 = obj.x2
+      data.y2 = obj.y2
+    }
+    return data
+  }
 
   useImperativeHandle(ref, () => ({
     getCanvas: () => fabricRef.current,
+    updateSelectedObject: (props) => {
+      const canvas = fabricRef.current
+      if (!canvas) return
+      const obj = canvas.getActiveObject()
+      if (!obj) return
+      obj.set(props)
+      obj.setCoords()
+      canvas.renderAll()
+      if (onSelectionChangeRef.current) onSelectionChangeRef.current(getSelectedObjectData())
+    },
+    deleteSelectedObject: () => {
+      const canvas = fabricRef.current
+      if (!canvas) return
+      const obj = canvas.getActiveObject()
+      if (!obj) return
+      canvas.remove(obj)
+      canvas.discardActiveObject()
+      canvas.renderAll()
+      if (onSelectionChangeRef.current) onSelectionChangeRef.current(null)
+    },
     exportImage: () => {
       const canvas = fabricRef.current
       if (!canvas || !bgImageRef.current) return null
@@ -434,21 +548,26 @@ const CanvasEditor = forwardRef(function CanvasEditor(
     bCtx.filter = `blur(${brushSize * 1.5}px)`
     bCtx.drawImage(imgEl, 0, 0)
 
-    const wrapper = wrapperRef.current
-    const containerW = wrapper ? wrapper.clientWidth : 800
-    const containerH = wrapper ? wrapper.clientHeight : 600
-    const scaleX = srcW / containerW
-    const scaleY = srcH / containerH
-    const r = brushSize * 3 * Math.max(scaleX, scaleY)
+    const img = bgImageRef.current
+    const imgBounds = getImageBounds(img)
+    const scaleX = img.scaleX
+    const scaleY = img.scaleY
+    const r = brushSize * 3 / Math.min(scaleX || 1, scaleY || 1)
 
     blurPointsRef.current.forEach(p => {
+      const px = (p.x - imgBounds.left) / scaleX
+      const py = (p.y - imgBounds.top) / scaleY
       ctx.save()
       ctx.beginPath()
-      ctx.arc(p.x * scaleX, p.y * scaleY, r, 0, Math.PI * 2)
+      ctx.arc(px, py, r, 0, Math.PI * 2)
       ctx.clip()
       ctx.drawImage(bCanvas, 0, 0)
       ctx.restore()
     })
+
+    const wrapper = wrapperRef.current
+    const containerW = wrapper ? wrapper.clientWidth : 800
+    const containerH = wrapper ? wrapper.clientHeight : 600
 
     const dataUrl = tempCanvas.toDataURL('image/png')
     const newImgEl = new window.Image()
@@ -525,6 +644,16 @@ const CanvasEditor = forwardRef(function CanvasEditor(
     }
     canvas.on('path:created', handlePathCreated)
 
+    const handleSelection = () => {
+      if (onSelectionChangeRef.current) onSelectionChangeRef.current(getSelectedObjectData())
+    }
+    const handleSelectionCleared = () => {
+      if (onSelectionChangeRef.current) onSelectionChangeRef.current(null)
+    }
+    canvas.on('selection:created', handleSelection)
+    canvas.on('selection:updated', handleSelection)
+    canvas.on('selection:cleared', handleSelectionCleared)
+
     canvas.on('mouse:move', (opt) => {
       const pointer = canvas.getScenePoint(opt.e)
       if (onCursorMove) onCursorMove({ x: Math.round(pointer.x), y: Math.round(pointer.y) })
@@ -577,6 +706,9 @@ const CanvasEditor = forwardRef(function CanvasEditor(
       canvas.off('object:removed', handleCanvasChange)
       canvas.off('object:modified', handleCanvasChange)
       canvas.off('path:created', handlePathCreated)
+      canvas.off('selection:created', handleSelection)
+      canvas.off('selection:updated', handleSelection)
+      canvas.off('selection:cleared', handleSelectionCleared)
       canvas.dispose()
       fabricRef.current = null
     }
@@ -605,8 +737,9 @@ const CanvasEditor = forwardRef(function CanvasEditor(
       if (pendingRestoreRef.current && canvasHistoryIndexRef.current >= 0) {
         skipSaveRef.current = true
         const state = JSON.parse(canvasHistoryRef.current[canvasHistoryIndexRef.current])
-        fabric.util.enlivenObjects(state).then(objects => {
-          objects.forEach(o => currentCanvas.add(o))
+        const objects = state.objects || state
+        fabric.util.enlivenObjects(objects).then(newObjects => {
+          newObjects.forEach(o => currentCanvas.add(o))
           currentCanvas.renderAll()
           skipSaveRef.current = false
           pendingRestoreRef.current = false
@@ -632,6 +765,7 @@ const CanvasEditor = forwardRef(function CanvasEditor(
       obj.evented = false
       obj.hoverCursor = 'default'
     })
+    canvas.discardActiveObject()
 
     if (shapeRef.current) { canvas.remove(shapeRef.current); shapeRef.current = null }
     if (cropRectRef.current) { canvas.remove(cropRectRef.current); cropRectRef.current = null }

@@ -260,6 +260,39 @@
   opacity: 0.85;
 }
 
+.tool-option-btn--active {
+  background: var(--accent);
+  color: var(--accent-text, #fff);
+  border-color: var(--accent);
+}
+
+.tool-option-btn--danger {
+  background: #5c1a1a;
+  border-color: #8b2d2d;
+  color: #ff6b6b;
+}
+
+.tool-option-btn--danger:hover {
+  background: #7a2222;
+}
+
+.tool-sidebar-number-input {
+  width: 100%;
+  padding: 4px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--accent-border);
+  background: var(--accent-bg);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+.tool-sidebar-number-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
 
 
 .lock-ratio-btn {

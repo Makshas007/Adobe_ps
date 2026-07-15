@@ -34,6 +34,7 @@ function CollapsibleGroup({ title, defaultOpen = true, children }) {
 
 export default function ToolOptions({
   activeTool,
+  setActiveTool,
   brushColor,
   setBrushColor,
   brushSize,
@@ -46,15 +47,162 @@ export default function ToolOptions({
   onFilterChange,
   imageDimensions,
   optionsOpen,
+  selectedObject,
+  onUpdateSelectedObject,
+  onDeleteObject,
 }) {
-  if (!TOOLS_WITH_OPTIONS.includes(activeTool) || !optionsOpen) return null
+  const hasToolOptions = TOOLS_WITH_OPTIONS.includes(activeTool)
+  if (!hasToolOptions && !selectedObject) return null
+  if (!optionsOpen && !selectedObject) return null
 
   return (
-    <div className="tool-options-sidebar" key={activeTool}>
+    <div className="tool-options-sidebar" key={selectedObject ? 'selection' : activeTool}>
       <div className="tool-options-sidebar-header">
-        <span>{TOOL_NAMES[activeTool] || 'Tool Settings'}</span>
+        <span>{selectedObject ? (TOOL_NAMES[activeTool] || 'Object Properties') : (TOOL_NAMES[activeTool] || 'Tool Settings')}</span>
       </div>
       <div className="tool-options-sidebar-content">
+        {selectedObject && (
+          <>
+          <CollapsibleGroup title="Position & Size">
+            <div className="tool-sidebar-field tool-sidebar-field--row">
+              <div className="tool-sidebar-field" style={{ flex: 1 }}>
+                <label>X</label>
+                <input
+                  type="number"
+                  className="tool-sidebar-number-input"
+                  value={selectedObject.left}
+                  onChange={(e) => onUpdateSelectedObject({ left: Number(e.target.value) })}
+                />
+              </div>
+              <div className="tool-sidebar-field" style={{ flex: 1 }}>
+                <label>Y</label>
+                <input
+                  type="number"
+                  className="tool-sidebar-number-input"
+                  value={selectedObject.top}
+                  onChange={(e) => onUpdateSelectedObject({ top: Number(e.target.value) })}
+                />
+              </div>
+            </div>
+            <div className="tool-sidebar-field tool-sidebar-field--row">
+              <div className="tool-sidebar-field" style={{ flex: 1 }}>
+                <label>W</label>
+                <input
+                  type="number"
+                  className="tool-sidebar-number-input"
+                  value={selectedObject.width}
+                  disabled
+                />
+              </div>
+              <div className="tool-sidebar-field" style={{ flex: 1 }}>
+                <label>H</label>
+                <input
+                  type="number"
+                  className="tool-sidebar-number-input"
+                  value={selectedObject.height}
+                  disabled
+                />
+              </div>
+            </div>
+            <div className="tool-sidebar-field">
+              <label>Rotation</label>
+              <div className="tool-sidebar-slider-row">
+                <input
+                  type="range"
+                  min="-180"
+                  max="180"
+                  value={selectedObject.angle || 0}
+                  onChange={(e) => onUpdateSelectedObject({ angle: Number(e.target.value) })}
+                />
+                <span className="tool-option-value">{selectedObject.angle || 0}°</span>
+              </div>
+            </div>
+          </CollapsibleGroup>
+          <CollapsibleGroup title="Appearance">
+            <div className="tool-sidebar-field">
+              <label>Fill</label>
+              <ColorPicker
+                color={selectedObject.fill !== 'transparent' && selectedObject.fill ? selectedObject.fill : '#000000'}
+                onChange={(c) => onUpdateSelectedObject({ fill: c })}
+              />
+            </div>
+            <div className="tool-sidebar-field">
+              <label>Stroke</label>
+              <ColorPicker
+                color={selectedObject.stroke || '#000000'}
+                onChange={(c) => onUpdateSelectedObject({ stroke: c })}
+              />
+            </div>
+            <div className="tool-sidebar-field">
+              <label>Stroke Width</label>
+              <div className="tool-sidebar-slider-row">
+                <input
+                  type="range"
+                  min="0"
+                  max="50"
+                  value={selectedObject.strokeWidth || 0}
+                  onChange={(e) => onUpdateSelectedObject({ strokeWidth: Number(e.target.value) })}
+                />
+                <span className="tool-option-value">{selectedObject.strokeWidth || 0}px</span>
+              </div>
+            </div>
+            <div className="tool-sidebar-field">
+              <label>Opacity</label>
+              <div className="tool-sidebar-slider-row">
+                <input
+                  type="range"
+                  min="1"
+                  max="100"
+                  value={Math.round((selectedObject.opacity ?? 1) * 100)}
+                  onChange={(e) => onUpdateSelectedObject({ opacity: Number(e.target.value) / 100 })}
+                />
+                <span className="tool-option-value">{Math.round((selectedObject.opacity ?? 1) * 100)}%</span>
+              </div>
+            </div>
+            {selectedObject.type === 'i-text' && (
+              <>
+              <div className="tool-sidebar-field">
+                <label>Font Size</label>
+                <div className="tool-sidebar-slider-row">
+                  <input
+                    type="range"
+                    min="8"
+                    max="120"
+                    value={selectedObject.fontSize || 24}
+                    onChange={(e) => onUpdateSelectedObject({ fontSize: Number(e.target.value) })}
+                  />
+                  <span className="tool-option-value">{selectedObject.fontSize || 24}px</span>
+                </div>
+              </div>
+              <div className="tool-sidebar-field tool-sidebar-field--row">
+                <button
+                  className={`tool-option-btn ${selectedObject.fontWeight === 'bold' ? 'tool-option-btn--active' : ''}`}
+                  onClick={() => onUpdateSelectedObject({ fontWeight: selectedObject.fontWeight === 'bold' ? 'normal' : 'bold' })}
+                >
+                  B
+                </button>
+                {['left', 'center', 'right'].map(align => (
+                  <button
+                    key={align}
+                    className={`tool-option-btn ${selectedObject.textAlign === align || (!selectedObject.textAlign && align === 'left') ? 'tool-option-btn--active' : ''}`}
+                    onClick={() => onUpdateSelectedObject({ textAlign: align })}
+                    style={{ flex: 1 }}
+                  >
+                    {align === 'left' ? '\u2190' : align === 'center' ? '\u2194' : '\u2192'}
+                  </button>
+                ))}
+              </div>
+              </>
+            )}
+          </CollapsibleGroup>
+          <div className="tool-sidebar-field">
+            <button className="tool-option-btn tool-option-btn--full tool-option-btn--danger" onClick={onDeleteObject}>
+              Delete
+            </button>
+          </div>
+          </>
+        )}
+
         {(activeTool === 'brush' || activeTool === 'eraser') && (
           <CollapsibleGroup title="Brush">
             {activeTool === 'brush' && (
@@ -153,6 +301,22 @@ export default function ToolOptions({
                 />
                 <span className="tool-option-value">{brushSize}px</span>
               </div>
+            </div>
+          </CollapsibleGroup>
+        )}
+
+        {(activeTool === 'rect' || activeTool === 'circle' || activeTool === 'line') && (
+          <CollapsibleGroup title="Shape Type">
+            <div className="tool-sidebar-field tool-sidebar-field--row">
+              {['rect', 'circle', 'line'].map(type => (
+                <button
+                  key={type}
+                  className={`tool-option-btn ${activeTool === type ? 'tool-option-btn--active' : ''}`}
+                  onClick={() => setActiveTool(type)}
+                >
+                  {type === 'rect' ? 'Rect' : type === 'circle' ? 'Circle' : 'Line'}
+                </button>
+              ))}
             </div>
           </CollapsibleGroup>
         )}

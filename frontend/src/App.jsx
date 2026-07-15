@@ -34,12 +34,27 @@ function App() {
     Brightness: 0, Contrast: 0, Saturation: 0, HueRotation: 0, Blur: 0,
   })
 
+  const [selectedObject, setSelectedObject] = useState(null)
+
   useEffect(() => {
     setToolOptionsOpen(TOOLS_WITH_OPTIONS.includes(activeTool))
   }, [activeTool])
 
   const canvasRef = useRef(null)
   const resolveImageLoadedRef = useRef(null)
+
+  const handleSelectionChange = useCallback((data) => {
+    setSelectedObject(data)
+    if (data) setToolOptionsOpen(true)
+  }, [])
+
+  const handleUpdateSelectedObject = useCallback((props) => {
+    canvasRef.current?.updateSelectedObject(props)
+  }, [])
+
+  const handleDeleteObject = useCallback(() => {
+    canvasRef.current?.deleteSelectedObject()
+  }, [])
 
   const handleCanvasHistoryChange = useCallback((undoAvailable, redoAvailable) => {
     setCanCanvasUndo(undoAvailable)
@@ -170,6 +185,7 @@ function App() {
     setBrushColor('#FF1E8A')
     setBrushSize(5)
     setBrushOpacity(1)
+    setSelectedObject(null)
     setZoom(100)
     setImageDimensions(null)
     setCursorPos(null)
@@ -441,6 +457,7 @@ function App() {
           />
           <ToolOptions
             activeTool={activeTool}
+            setActiveTool={setActiveTool}
             brushColor={brushColor}
             setBrushColor={setBrushColor}
             brushSize={brushSize}
@@ -453,6 +470,9 @@ function App() {
             onFilterChange={handleFilterChange}
             imageDimensions={imageDimensions}
             optionsOpen={toolOptionsOpen}
+            selectedObject={selectedObject}
+            onUpdateSelectedObject={handleUpdateSelectedObject}
+            onDeleteObject={handleDeleteObject}
           />
           <div className="canvas-area">
             <CanvasEditor
@@ -470,6 +490,7 @@ function App() {
               onToolChange={setActiveTool}
               onCanvasHistoryChange={handleCanvasHistoryChange}
               onImageLoaded={() => resolveImageLoadedRef.current?.()}
+              onSelectionChange={handleSelectionChange}
             />
           </div>
           <div className="right-column">
