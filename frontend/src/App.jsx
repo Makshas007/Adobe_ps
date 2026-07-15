@@ -435,68 +435,70 @@ function App() {
         </div>
       </nav>
 
-      <div className="main-content" style={{ display: view === 'editor' ? 'flex' : 'none' }}>
-        <ToolbarRibbon
-          onUpload={handleUpload}
-          onUndo={prevNode}
-          onRedo={nextNode}
-          redoOptions={redoOptions}
-          canUndo={!!(imageHistoryNode && imageHistoryNode.prevNode)}
-          canRedo={!!(imageHistoryNode && imageHistoryNode.nextNode?.length)}
-          onCanvasUndo={handleCanvasUndo}
-          onCanvasRedo={handleCanvasRedo}
-          canCanvasUndo={canCanvasUndo}
-          canCanvasRedo={canCanvasRedo}
-          newChat={newChat}
-          activeTool={activeTool}
-          setActiveTool={setActiveTool}
-          hasImage={!!imageUrl}
-          toolOptionsOpen={toolOptionsOpen}
-          setToolOptionsOpen={setToolOptionsOpen}
-        />
-        <ToolOptions
-          activeTool={activeTool}
-          setActiveTool={setActiveTool}
-          brushColor={brushColor}
-          setBrushColor={setBrushColor}
-          brushSize={brushSize}
-          setBrushSize={setBrushSize}
-          brushOpacity={brushOpacity}
-          setBrushOpacity={setBrushOpacity}
-          onApplyCrop={handleApplyCrop}
-          onResize={handleResize}
-          filterValues={filterValues}
-          onFilterChange={handleFilterChange}
-          imageDimensions={imageDimensions}
-          optionsOpen={toolOptionsOpen}
-          selectedObject={selectedObject}
-          onUpdateSelectedObject={handleUpdateSelectedObject}
-          onDeleteObject={handleDeleteObject}
-        />
-        <div className="canvas-area">
-          <CanvasEditor
-            ref={canvasRef}
-            imageUrl={imageUrl}
-            currentNodeId={imageHistoryNode?.id}
+      {view === 'editor' && (
+        <div className="main-content">
+          <ToolbarRibbon
+            onUpload={handleUpload}
+            onUndo={prevNode}
+            onRedo={nextNode}
+            redoOptions={redoOptions}
+            canUndo={!!(imageHistoryNode && imageHistoryNode.prevNode)}
+            canRedo={!!(imageHistoryNode && imageHistoryNode.nextNode?.length)}
+            onCanvasUndo={handleCanvasUndo}
+            onCanvasRedo={handleCanvasRedo}
+            canCanvasUndo={canCanvasUndo}
+            canCanvasRedo={canCanvasRedo}
+            newChat={newChat}
             activeTool={activeTool}
-            brushColor={brushColor}
-            brushSize={brushSize}
-            brushOpacity={brushOpacity}
-            onCursorMove={setCursorPos}
-            onZoomChange={setZoom}
-            onImageDimensions={setImageDimensions}
-            onCanvasReady={handleCanvasReady}
-            onToolChange={setActiveTool}
-            onCanvasHistoryChange={handleCanvasHistoryChange}
-            onImageLoaded={() => resolveImageLoadedRef.current?.()}
-            onSelectionChange={handleSelectionChange}
+            setActiveTool={setActiveTool}
+            hasImage={!!imageUrl}
+            toolOptionsOpen={toolOptionsOpen}
+            setToolOptionsOpen={setToolOptionsOpen}
           />
+          <ToolOptions
+            activeTool={activeTool}
+            setActiveTool={setActiveTool}
+            brushColor={brushColor}
+            setBrushColor={setBrushColor}
+            brushSize={brushSize}
+            setBrushSize={setBrushSize}
+            brushOpacity={brushOpacity}
+            setBrushOpacity={setBrushOpacity}
+            onApplyCrop={handleApplyCrop}
+            onResize={handleResize}
+            filterValues={filterValues}
+            onFilterChange={handleFilterChange}
+            imageDimensions={imageDimensions}
+            optionsOpen={toolOptionsOpen}
+            selectedObject={selectedObject}
+            onUpdateSelectedObject={handleUpdateSelectedObject}
+            onDeleteObject={handleDeleteObject}
+          />
+          <div className="canvas-area">
+            <CanvasEditor
+              ref={canvasRef}
+              imageUrl={imageUrl}
+              currentNodeId={imageHistoryNode?.id}
+              activeTool={activeTool}
+              brushColor={brushColor}
+              brushSize={brushSize}
+              brushOpacity={brushOpacity}
+              onCursorMove={setCursorPos}
+              onZoomChange={setZoom}
+              onImageDimensions={setImageDimensions}
+              onCanvasReady={handleCanvasReady}
+              onToolChange={setActiveTool}
+              onCanvasHistoryChange={handleCanvasHistoryChange}
+              onImageLoaded={() => resolveImageLoadedRef.current?.()}
+              onSelectionChange={handleSelectionChange}
+            />
+          </div>
+          <div className="right-column">
+            <TreePanel headId={head.id} historyVersion={historyVersion} setNode={setNode} currNode={imageHistoryNode} />
+            <ChatWindow imageHistoryNode={imageHistoryNode} head={head} onEditComplete={handleEditComplete} canvasRef={canvasRef} />
+          </div>
         </div>
-        <div className="right-column">
-          <TreePanel headId={head.id} historyVersion={historyVersion} setNode={setNode} currNode={imageHistoryNode} />
-          <ChatWindow imageHistoryNode={imageHistoryNode} head={head} onEditComplete={handleEditComplete} canvasRef={canvasRef} />
-        </div>
-      </div>
+      )}
 
       {view === 'library' && (
         <div className="main-content">
