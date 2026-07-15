@@ -362,7 +362,7 @@ function App() {
     setImageUrl(dataUri)
     setFilterValues({ Brightness: 0, Contrast: 0, Saturation: 0, HueRotation: 0, Blur: 0 })
     setActiveTool('select')
-    const blob = dataURLtoBlob(dataUri)
+    const blob = dataURLtoBlob(canvasRef.current.exportImage())
     const { id } = await image.addImage(blob)
     const node = await history.addNode({ label, time: new Date().toLocaleString(), imageId: id, filename }, imageHistoryNode.id)
     localStorage.setItem(node.id, filename)
