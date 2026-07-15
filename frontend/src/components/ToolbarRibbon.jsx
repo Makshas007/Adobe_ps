@@ -18,6 +18,9 @@ import {
   PlusIcon,
   UserPlus,
   PlusSquareIcon,
+  Droplets,
+  RotateCcw,
+  Trash2,
 } from "lucide-react";
 
 export default function ToolbarRibbon({
@@ -50,6 +53,9 @@ export default function ToolbarRibbon({
     { label: "Filter", icon: Sparkles },
     { label: "Brush", icon: Brush, shortcut: "B" },
     { label: "Eraser", icon: Eraser, shortcut: "E" },
+    { label: "Blur", icon: Droplets, shortcut: "L" },
+    { label: "Restore", icon: RotateCcw, shortcut: "R" },
+    { label: "Doodle Eraser", icon: Trash2, shortcut: "D" },
     { label: "Text", icon: Type, shortcut: "T" },
     { label: "Shape", icon: Square, shortcut: "U" },
     {label: "Save", icon: Save, shortcut: "Ctrl+S"}
@@ -112,7 +118,8 @@ export default function ToolbarRibbon({
         const isActive = activeTool === tool.label.toLowerCase() ||
           (tool.label === 'Shape' && activeTool === 'rect') ||
           (tool.label === 'Shape' && activeTool === 'circle') ||
-          (tool.label === 'Shape' && activeTool === 'line');
+          (tool.label === 'Shape' && activeTool === 'line') ||
+          (tool.label === 'Doodle Eraser' && activeTool === 'doodle-eraser');
 
         return (
           <button
@@ -123,6 +130,9 @@ export default function ToolbarRibbon({
               if (tool.label === 'Select') setActiveTool('select');
               else if (tool.label === 'Brush') setActiveTool('brush');
               else if (tool.label === 'Eraser') setActiveTool('eraser');
+              else if (tool.label === 'Blur') setActiveTool('blur');
+              else if (tool.label === 'Restore') setActiveTool('restore');
+              else if (tool.label === 'Doodle Eraser') setActiveTool('doodle-eraser');
               else if (tool.label === 'Text') setActiveTool('text');
               else if (tool.label === 'Shape') setActiveTool('rect');
               else if (tool.label === 'Crop') setActiveTool('crop');

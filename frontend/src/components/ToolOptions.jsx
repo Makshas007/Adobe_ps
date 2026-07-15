@@ -4,6 +4,9 @@ import { useState, useEffect } from 'react'
 const TOOL_NAMES = {
   brush: 'Brush Settings',
   eraser: 'Eraser Settings',
+  blur: 'Blur Brush Settings',
+  restore: 'Eraser Recovery Settings',
+  'doodle-eraser': 'Doodle Eraser Settings',
   text: 'Text Settings',
   rect: 'Shape Settings',
   circle: 'Shape Settings',
@@ -13,7 +16,7 @@ const TOOL_NAMES = {
   filter: 'Filter Settings',
 }
 
-const TOOLS_WITH_OPTIONS = ['brush', 'eraser', 'text', 'rect', 'circle', 'line', 'crop', 'resize', 'filter']
+const TOOLS_WITH_OPTIONS = ['brush', 'eraser', 'blur', 'restore', 'doodle-eraser', 'text', 'rect', 'circle', 'line', 'crop', 'resize', 'filter']
 
 function CollapsibleGroup({ title, defaultOpen = true, children }) {
   const [open, setOpen] = useState(defaultOpen)
@@ -72,17 +75,82 @@ export default function ToolOptions({
                 <span className="tool-option-value">{brushSize}px</span>
               </div>
             </div>
+            {activeTool !== 'eraser' && (
+              <div className="tool-sidebar-field">
+                <label>Opacity</label>
+                <div className="tool-sidebar-slider-row">
+                  <input
+                    type="range"
+                    min="1"
+                    max="100"
+                    value={Math.round(brushOpacity * 100)}
+                    onChange={(e) => setBrushOpacity(Number(e.target.value) / 100)}
+                  />
+                  <span className="tool-option-value">{Math.round(brushOpacity * 100)}%</span>
+                </div>
+              </div>
+            )}
+          </CollapsibleGroup>
+        )}
+
+        {activeTool === 'blur' && (
+          <CollapsibleGroup title="Blur Brush">
             <div className="tool-sidebar-field">
-              <label>Opacity</label>
+              <span className="tool-option-hint">Paint over areas to blur them. Stronger effect with larger size.</span>
+            </div>
+            <div className="tool-sidebar-field">
+              <label>Size</label>
               <div className="tool-sidebar-slider-row">
                 <input
                   type="range"
                   min="1"
                   max="100"
-                  value={Math.round(brushOpacity * 100)}
-                  onChange={(e) => setBrushOpacity(Number(e.target.value) / 100)}
+                  value={brushSize}
+                  onChange={(e) => setBrushSize(Number(e.target.value))}
                 />
-                <span className="tool-option-value">{Math.round(brushOpacity * 100)}%</span>
+                <span className="tool-option-value">{brushSize}px</span>
+              </div>
+            </div>
+          </CollapsibleGroup>
+        )}
+
+        {activeTool === 'restore' && (
+          <CollapsibleGroup title="Restore Brush">
+            <div className="tool-sidebar-field">
+              <span className="tool-option-hint">Paint over erased areas to restore them.</span>
+            </div>
+            <div className="tool-sidebar-field">
+              <label>Size</label>
+              <div className="tool-sidebar-slider-row">
+                <input
+                  type="range"
+                  min="1"
+                  max="100"
+                  value={brushSize}
+                  onChange={(e) => setBrushSize(Number(e.target.value))}
+                />
+                <span className="tool-option-value">{brushSize}px</span>
+              </div>
+            </div>
+          </CollapsibleGroup>
+        )}
+
+        {activeTool === 'doodle-eraser' && (
+          <CollapsibleGroup title="Doodle Eraser">
+            <div className="tool-sidebar-field">
+              <span className="tool-option-hint">Click or paint over doodles to remove them. The background image is protected.</span>
+            </div>
+            <div className="tool-sidebar-field">
+              <label>Size</label>
+              <div className="tool-sidebar-slider-row">
+                <input
+                  type="range"
+                  min="1"
+                  max="100"
+                  value={brushSize}
+                  onChange={(e) => setBrushSize(Number(e.target.value))}
+                />
+                <span className="tool-option-value">{brushSize}px</span>
               </div>
             </div>
           </CollapsibleGroup>
@@ -94,6 +162,21 @@ export default function ToolOptions({
               <label>Color</label>
               <ColorPicker color={brushColor} onChange={setBrushColor} />
             </div>
+            {activeTool !== 'text' && (
+              <div className="tool-sidebar-field">
+                <label>Opacity</label>
+                <div className="tool-sidebar-slider-row">
+                  <input
+                    type="range"
+                    min="1"
+                    max="100"
+                    value={Math.round(brushOpacity * 100)}
+                    onChange={(e) => setBrushOpacity(Number(e.target.value) / 100)}
+                  />
+                  <span className="tool-option-value">{Math.round(brushOpacity * 100)}%</span>
+                </div>
+              </div>
+            )}
           </CollapsibleGroup>
         )}
 

@@ -28,6 +28,12 @@ const CanvasEditor = forwardRef(function CanvasEditor(
   const shapeStartPoint = useRef(null)
   const shapeRef = useRef(null)
   const cropRectRef = useRef(null)
+  const toolCursorRef = useRef(null)
+  const isBlurringRef = useRef(false)
+  const blurPointsRef = useRef([])
+  const blurOriginalElRef = useRef(null)
+  const isRestoringRef = useRef(false)
+  const isDoodleErasingRef = useRef(false)
 
   const nodeHistoryMapRef = useRef(new Map())
   const currentNodeIdRef = useRef(null)
@@ -50,7 +56,7 @@ const CanvasEditor = forwardRef(function CanvasEditor(
     const canvas = fabricRef.current
     if (!canvas) return
     const objects = canvas.getObjects().filter(o => o !== bgImageRef.current && !o.isCropRect)
-    const state = JSON.stringify(objects.map(o => o.toJSON(['isCropRect'])))
+    const state = JSON.stringify(objects.map(o => o.toJSON(['isCropRect', 'isEraser'])))
     if (canvasHistoryIndexRef.current >= 0 &&
         canvasHistoryRef.current[canvasHistoryIndexRef.current] === state) return
     canvasHistoryRef.current = canvasHistoryRef.current.slice(0, canvasHistoryIndexRef.current + 1)
@@ -398,6 +404,79 @@ const CanvasEditor = forwardRef(function CanvasEditor(
     if (onZoomChange) onZoomChange(100)
   }, [onImageDimensions, onZoomChange])
 
+  function circleRectIntersect(cx, cy, r, rect) {
+    const nearestX = Math.max(rect.left, Math.min(cx, rect.left + rect.width))
+    const nearestY = Math.max(rect.top, Math.min(cy, rect.top + rect.height))
+    const dx = cx - nearestX
+    const dy = cy - nearestY
+    return (dx * dx + dy * dy) < (r * r)
+  }
+
+  function applyBlurStroke() {
+    const canvas = fabricRef.current
+    if (!canvas || !bgImageRef.current || blurPointsRef.current.length === 0) return
+    const imgEl = blurOriginalElRef.current || bgImageRef.current.getElement()
+    if (!imgEl) return
+
+    const srcW = imgEl.naturalWidth || imgEl.width
+    const srcH = imgEl.naturalHeight || imgEl.height
+    const tempCanvas = document.createElement('canvas')
+    tempCanvas.width = srcW
+    tempCanvas.height = srcH
+    const ctx = tempCanvas.getContext('2d')
+    ctx.drawImage(imgEl, 0, 0)
+
+    const brushSize = brushSizeRef.current
+    const bCanvas = document.createElement('canvas')
+    bCanvas.width = srcW
+    bCanvas.height = srcH
+    const bCtx = bCanvas.getContext('2d')
+    bCtx.filter = `blur(${brushSize * 1.5}px)`
+    bCtx.drawImage(imgEl, 0, 0)
+
+    const wrapper = wrapperRef.current
+    const containerW = wrapper ? wrapper.clientWidth : 800
+    const containerH = wrapper ? wrapper.clientHeight : 600
+    const scaleX = srcW / containerW
+    const scaleY = srcH / containerH
+    const r = brushSize * 3 * Math.max(scaleX, scaleY)
+
+    blurPointsRef.current.forEach(p => {
+      ctx.save()
+      ctx.beginPath()
+      ctx.arc(p.x * scaleX, p.y * scaleY, r, 0, Math.PI * 2)
+      ctx.clip()
+      ctx.drawImage(bCanvas, 0, 0)
+      ctx.restore()
+    })
+
+    const dataUrl = tempCanvas.toDataURL('image/png')
+    const newImgEl = new window.Image()
+    newImgEl.src = dataUrl
+    newImgEl.onload = () => {
+      skipSaveRef.current = true
+      if (bgImageRef.current) {
+        canvas.remove(bgImageRef.current)
+        bgImageRef.current = null
+      }
+      const scale = Math.min(containerW / srcW, containerH / srcH)
+      canvas.setViewportTransform([1, 0, 0, 1, 0, 0])
+      canvas.setDimensions({ width: containerW, height: containerH })
+      const fabricImage = new fabric.FabricImage(newImgEl, {
+        selectable: false, evented: false, hasControls: false, hasBorders: false,
+        hoverCursor: 'default', originX: 'center', originY: 'center',
+        left: containerW / 2, top: containerH / 2,
+      })
+      fabricImage.scale(scale)
+      bgImageRef.current = fabricImage
+      canvas.add(fabricImage)
+      canvas.sendObjectToBack(fabricImage)
+      canvas.renderAll()
+      skipSaveRef.current = false
+      saveCanvasState()
+    }
+  }
+
   useEffect(() => {
     if (!canvasRef.current) return
     const canvas = new fabric.Canvas(canvasRef.current, {
@@ -433,13 +512,26 @@ const CanvasEditor = forwardRef(function CanvasEditor(
     canvas.on('object:removed', handleCanvasChange)
     canvas.on('object:modified', handleCanvasChange)
 
+    const handlePathCreated = (opt) => {
+      if (activeToolRef.current === 'brush') {
+        opt.path.set('stroke', brushColorRef.current)
+        opt.path.set('opacity', brushOpacityRef.current)
+        opt.path.setCoords()
+      }
+      if (activeToolRef.current === 'eraser') {
+        opt.path.set('isEraser', true)
+        opt.path.setCoords()
+      }
+    }
+    canvas.on('path:created', handlePathCreated)
+
     canvas.on('mouse:move', (opt) => {
       const pointer = canvas.getScenePoint(opt.e)
       if (onCursorMove) onCursorMove({ x: Math.round(pointer.x), y: Math.round(pointer.y) })
     })
 
     canvas.on('mouse:wheel', (opt) => {
-      if (activeToolRef.current === 'brush' || activeToolRef.current === 'eraser') return
+      if (activeToolRef.current === 'brush' || activeToolRef.current === 'eraser' || activeToolRef.current === 'blur' || activeToolRef.current === 'restore' || activeToolRef.current === 'doodle-eraser') return
       const delta = opt.e.deltaY
       let zoom = canvas.getZoom()
       zoom *= 0.999 ** delta
@@ -484,6 +576,7 @@ const CanvasEditor = forwardRef(function CanvasEditor(
       canvas.off('object:added', handleCanvasChange)
       canvas.off('object:removed', handleCanvasChange)
       canvas.off('object:modified', handleCanvasChange)
+      canvas.off('path:created', handlePathCreated)
       canvas.dispose()
       fabricRef.current = null
     }
@@ -580,19 +673,19 @@ const CanvasEditor = forwardRef(function CanvasEditor(
         if (tool === 'rect') {
           shape = new fabric.Rect({
             left: pointer.x, top: pointer.y, width: 0, height: 0,
-            fill: 'transparent', stroke: color, strokeWidth: 2,
-            selectable: false, evented: false,
+            fill: 'transparent', stroke: color, strokeWidth: size,
+            opacity: opacity, selectable: false, evented: false,
           })
         } else if (tool === 'circle') {
           shape = new fabric.Ellipse({
             left: pointer.x, top: pointer.y, rx: 0, ry: 0,
-            fill: 'transparent', stroke: color, strokeWidth: 2,
-            selectable: false, evented: false,
+            fill: 'transparent', stroke: color, strokeWidth: size,
+            opacity: opacity, selectable: false, evented: false,
           })
         } else if (tool === 'line') {
           shape = new fabric.Line([pointer.x, pointer.y, pointer.x, pointer.y], {
-            stroke: color, strokeWidth: 2,
-            selectable: false, evented: false,
+            stroke: color, strokeWidth: size,
+            opacity: opacity, selectable: false, evented: false,
           })
         }
         if (shape) { canvas.add(shape); shapeRef.current = shape }
@@ -611,6 +704,47 @@ const CanvasEditor = forwardRef(function CanvasEditor(
         })
         cropRectRef.current = cropRect
         canvas.add(cropRect)
+      } else if (tool === 'blur') {
+        if (!bgImageRef.current) return
+        isBlurringRef.current = true
+        blurPointsRef.current = []
+        blurOriginalElRef.current = bgImageRef.current.getElement()
+        const pointer = canvas.getScenePoint(opt.e)
+        const br = size * 2
+        const cursorCircle = new fabric.Circle({
+          left: pointer.x - br, top: pointer.y - br,
+          radius: br, fill: 'rgba(255,255,255,0.1)', stroke: 'rgba(255,255,255,0.4)',
+          strokeWidth: 1, selectable: false, evented: false,
+        })
+        toolCursorRef.current = cursorCircle
+        canvas.add(cursorCircle)
+        canvas.renderAll()
+      } else if (tool === 'restore') {
+        if (!bgImageRef.current) return
+        isRestoringRef.current = true
+        const pointer = canvas.getScenePoint(opt.e)
+        const br = size * 2
+        const cursorCircle = new fabric.Circle({
+          left: pointer.x - br, top: pointer.y - br,
+          radius: br, fill: 'rgba(144,238,144,0.15)', stroke: 'rgba(144,238,144,0.5)',
+          strokeWidth: 1, selectable: false, evented: false,
+        })
+        toolCursorRef.current = cursorCircle
+        canvas.add(cursorCircle)
+        canvas.renderAll()
+      } else if (tool === 'doodle-eraser') {
+        if (!bgImageRef.current) return
+        isDoodleErasingRef.current = true
+        const pointer = canvas.getScenePoint(opt.e)
+        const br = size * 2
+        const cursorCircle = new fabric.Circle({
+          left: pointer.x - br, top: pointer.y - br,
+          radius: br, fill: 'rgba(255,100,100,0.15)', stroke: 'rgba(255,100,100,0.5)',
+          strokeWidth: 1, selectable: false, evented: false,
+        })
+        toolCursorRef.current = cursorCircle
+        canvas.add(cursorCircle)
+        canvas.renderAll()
       }
     })
 
@@ -655,6 +789,39 @@ const CanvasEditor = forwardRef(function CanvasEditor(
         const bottom = Math.min(imgBounds.bottom, Math.max(sy, pointer.y))
         cropRectRef.current.set({ left, top, width: right - left, height: bottom - top })
         canvas.renderAll()
+      } else if (tool === 'blur' && isBlurringRef.current) {
+        const pointer = canvas.getScenePoint(opt.e)
+        const br = size * 2
+        blurPointsRef.current.push({ x: pointer.x, y: pointer.y })
+        if (toolCursorRef.current) {
+          toolCursorRef.current.set({ left: pointer.x - br, top: pointer.y - br })
+          canvas.renderAll()
+        }
+      } else if (tool === 'restore' && isRestoringRef.current) {
+        const pointer = canvas.getScenePoint(opt.e)
+        const br = size * 2
+        if (toolCursorRef.current) {
+          toolCursorRef.current.set({ left: pointer.x - br, top: pointer.y - br })
+        }
+        const r = size * 3
+        const toRemove = canvas.getObjects().filter(o =>
+          o.isEraser && circleRectIntersect(pointer.x, pointer.y, r, o.getBoundingRect())
+        )
+        toRemove.forEach(o => canvas.remove(o))
+        if (toRemove.length > 0) canvas.renderAll()
+      } else if (tool === 'doodle-eraser' && isDoodleErasingRef.current) {
+        const pointer = canvas.getScenePoint(opt.e)
+        const br = size * 2
+        if (toolCursorRef.current) {
+          toolCursorRef.current.set({ left: pointer.x - br, top: pointer.y - br })
+        }
+        const r = size * 2
+        const toRemove = canvas.getObjects().filter(o =>
+          o !== bgImageRef.current && !o.isCropRect && !o.isEraser &&
+          circleRectIntersect(pointer.x, pointer.y, r, o.getBoundingRect())
+        )
+        toRemove.forEach(o => canvas.remove(o))
+        if (toRemove.length > 0) canvas.renderAll()
       }
     })
 
@@ -678,6 +845,20 @@ const CanvasEditor = forwardRef(function CanvasEditor(
           if (cropRectRef.current) { canvas.remove(cropRectRef.current); cropRectRef.current = null }
         }
         shapeStartPoint.current = null
+      } else if (tool === 'blur') {
+        if (toolCursorRef.current) { canvas.remove(toolCursorRef.current); toolCursorRef.current = null }
+        if (isBlurringRef.current) {
+          isBlurringRef.current = false
+          if (blurPointsRef.current.length > 0) applyBlurStroke()
+          blurPointsRef.current = []
+          blurOriginalElRef.current = null
+        }
+      } else if (tool === 'restore') {
+        if (toolCursorRef.current) { canvas.remove(toolCursorRef.current); toolCursorRef.current = null }
+        isRestoringRef.current = false
+      } else if (tool === 'doodle-eraser') {
+        if (toolCursorRef.current) { canvas.remove(toolCursorRef.current); toolCursorRef.current = null }
+        isDoodleErasingRef.current = false
       }
     })
 
@@ -704,7 +885,13 @@ const CanvasEditor = forwardRef(function CanvasEditor(
       case 'brush':
         canvas.isDrawingMode = true
         canvas.freeDrawingBrush = new fabric.PencilBrush(canvas)
-        canvas.freeDrawingBrush.color = color
+        const hexToRgba = (hex, opacity) => {
+          const r = parseInt(hex.slice(1, 3), 16)
+          const g = parseInt(hex.slice(3, 5), 16)
+          const b = parseInt(hex.slice(5, 7), 16)
+          return `rgba(${r},${g},${b},${opacity})`
+        }
+        canvas.freeDrawingBrush.color = opacity < 1 ? hexToRgba(color, opacity) : color
         canvas.freeDrawingBrush.width = size
         canvas.freeDrawingBrush.opacity = opacity
         canvas.freeDrawingBrush.strokeLineCap = 'round'
@@ -730,6 +917,9 @@ const CanvasEditor = forwardRef(function CanvasEditor(
         canvas.defaultCursor = 'crosshair'
         break
       case 'crop':
+      case 'blur':
+      case 'restore':
+      case 'doodle-eraser':
         canvas.defaultCursor = 'crosshair'
         break
       default:

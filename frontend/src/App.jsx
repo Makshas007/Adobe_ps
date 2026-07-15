@@ -387,6 +387,9 @@ function App() {
         case 't': setActiveTool('text'); break
         case 'u': setActiveTool('rect'); break
         case 'c': setActiveTool('crop'); break
+        case 'l': setActiveTool('blur'); break
+        case 'r': setActiveTool('restore'); break
+        case 'd': setActiveTool('doodle-eraser'); break
       }
     }
     window.addEventListener('keydown', handleKeyDown)
