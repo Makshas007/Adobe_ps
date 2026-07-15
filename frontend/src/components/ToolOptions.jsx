@@ -16,7 +16,7 @@ const TOOL_NAMES = {
   filter: 'Filter Settings',
 }
 
-const TOOLS_WITH_OPTIONS = ['brush', 'eraser', 'blur', 'restore', 'doodle-eraser', 'text', 'rect', 'circle', 'line', 'crop', 'resize', 'filter']
+export const TOOLS_WITH_OPTIONS = ['brush', 'eraser', 'blur', 'restore', 'doodle-eraser', 'text', 'rect', 'circle', 'line', 'crop', 'resize', 'filter']
 
 function CollapsibleGroup({ title, defaultOpen = true, children }) {
   const [open, setOpen] = useState(defaultOpen)
@@ -45,8 +45,9 @@ export default function ToolOptions({
   filterValues,
   onFilterChange,
   imageDimensions,
+  optionsOpen,
 }) {
-  if (!TOOLS_WITH_OPTIONS.includes(activeTool)) return null
+  if (!TOOLS_WITH_OPTIONS.includes(activeTool) || !optionsOpen) return null
 
   return (
     <div className="tool-options-sidebar" key={activeTool}>

@@ -27,6 +27,7 @@ export default function ToolbarRibbon({
   onUpload, onUndo, onRedo, canUndo, canRedo, newChat,
   onCanvasUndo, onCanvasRedo, canCanvasUndo, canCanvasRedo,
   activeTool, setActiveTool, hasImage, redoOptions = [],
+  toolOptionsOpen, setToolOptionsOpen,
 }) {
   const fileInputRef = useRef(null);
   const [redoDropdownOpen, setRedoDropdownOpen] = useState(false);
@@ -127,18 +128,26 @@ export default function ToolbarRibbon({
             className={`tool-btn ${isActive ? 'tool-btn--active' : ''}`}
             title={`${tool.label}${tool.shortcut ? ` (${tool.shortcut})` : ''}`}
             onClick={() => {
-              if (tool.label === 'Select') setActiveTool('select');
-              else if (tool.label === 'Brush') setActiveTool('brush');
-              else if (tool.label === 'Eraser') setActiveTool('eraser');
-              else if (tool.label === 'Blur') setActiveTool('blur');
-              else if (tool.label === 'Restore') setActiveTool('restore');
-              else if (tool.label === 'Doodle Eraser') setActiveTool('doodle-eraser');
-              else if (tool.label === 'Text') setActiveTool('text');
-              else if (tool.label === 'Shape') setActiveTool('rect');
-              else if (tool.label === 'Crop') setActiveTool('crop');
-              else if (tool.label === 'Resize') setActiveTool('resize');
-              else if (tool.label === 'Filter') setActiveTool('filter');
-              else if (tool.label === 'Save') window.dispatchEvent(new CustomEvent('canvas-save'));
+              const toolValue = (() => {
+                if (tool.label === 'Select') return 'select';
+                if (tool.label === 'Brush') return 'brush';
+                if (tool.label === 'Eraser') return 'eraser';
+                if (tool.label === 'Blur') return 'blur';
+                if (tool.label === 'Restore') return 'restore';
+                if (tool.label === 'Doodle Eraser') return 'doodle-eraser';
+                if (tool.label === 'Text') return 'text';
+                if (tool.label === 'Shape') return 'rect';
+                if (tool.label === 'Crop') return 'crop';
+                if (tool.label === 'Resize') return 'resize';
+                if (tool.label === 'Filter') return 'filter';
+                return null;
+              })();
+              if (toolValue) {
+                if (isActive) setToolOptionsOpen(!toolOptionsOpen);
+                else { setActiveTool(toolValue); setToolOptionsOpen(true); }
+              } else if (tool.label === 'Save') {
+                window.dispatchEvent(new CustomEvent('canvas-save'));
+              }
             }}
             disabled={!hasImage && tool.label !== 'Undo' && tool.label !== 'Redo'}
           >

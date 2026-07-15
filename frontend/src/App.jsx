@@ -4,7 +4,7 @@ import StatusBar from './components/StatusBar'
 import TreePanel from './components/TreePanel'
 import ChatWindow from './components/ChatWindow'
 import CanvasEditor from './components/CanvasEditor'
-import ToolOptions from './components/ToolOptions'
+import ToolOptions, { TOOLS_WITH_OPTIONS } from './components/ToolOptions'
 import LibraryView from './components/LibraryView'
 import ChatHistoryView from './components/ChatHistoryView'
 import { image, history, messages, waitForDB } from './utilities/indexedDB.js'
@@ -22,6 +22,7 @@ function App() {
   const [canCanvasRedo, setCanCanvasRedo] = useState(false)
 
   const [activeTool, setActiveTool] = useState('select')
+  const [toolOptionsOpen, setToolOptionsOpen] = useState(false)
   const [brushColor, setBrushColor] = useState('#FF1E8A')
   const [brushSize, setBrushSize] = useState(5)
   const [brushOpacity, setBrushOpacity] = useState(1)
@@ -32,6 +33,10 @@ function App() {
   const [filterValues, setFilterValues] = useState({
     Brightness: 0, Contrast: 0, Saturation: 0, HueRotation: 0, Blur: 0,
   })
+
+  useEffect(() => {
+    setToolOptionsOpen(TOOLS_WITH_OPTIONS.includes(activeTool))
+  }, [activeTool])
 
   const canvasRef = useRef(null)
   const resolveImageLoadedRef = useRef(null)
@@ -431,6 +436,8 @@ function App() {
             activeTool={activeTool}
             setActiveTool={setActiveTool}
             hasImage={!!imageUrl}
+            toolOptionsOpen={toolOptionsOpen}
+            setToolOptionsOpen={setToolOptionsOpen}
           />
           <ToolOptions
             activeTool={activeTool}
@@ -445,6 +452,7 @@ function App() {
             filterValues={filterValues}
             onFilterChange={handleFilterChange}
             imageDimensions={imageDimensions}
+            optionsOpen={toolOptionsOpen}
           />
           <div className="canvas-area">
             <CanvasEditor
