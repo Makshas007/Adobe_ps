@@ -225,9 +225,9 @@ const CanvasEditor = forwardRef(function CanvasEditor(
             top: containerH / 2,
           })
           fabricImage.scale(scale)
+          bgImageRef.current = fabricImage
           canvas.add(fabricImage)
           canvas.sendObjectToBack(fabricImage)
-          bgImageRef.current = fabricImage
 
           const isSelect = activeToolRef.current === 'select'
           userObjects.forEach(obj => {
@@ -284,9 +284,9 @@ const CanvasEditor = forwardRef(function CanvasEditor(
       })
       fabricImage.scale(scale)
 
+      bgImageRef.current = fabricImage
       canvas.add(fabricImage)
       canvas.sendObjectToBack(fabricImage)
-      bgImageRef.current = fabricImage
       canvas.renderAll()
     },
     applyFilter: (filterType, value) => {
@@ -389,9 +389,9 @@ const CanvasEditor = forwardRef(function CanvasEditor(
       top: containerH / 2,
     })
 
+    bgImageRef.current = fabricImage
     canvas.add(fabricImage)
     canvas.sendObjectToBack(fabricImage)
-    bgImageRef.current = fabricImage
     canvas.renderAll()
 
     if (onImageDimensions) onImageDimensions({ width: imgW, height: imgH })
