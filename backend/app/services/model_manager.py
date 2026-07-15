@@ -95,6 +95,10 @@ class ModelManager:
         from app.config import settings as app_settings
         from app.services.diffusion_service import DiffusionService
 
+        if self._loaded_type == ModelType.DIFFUSION and self._loaded_model is not None:
+            if getattr(self._loaded_model, 'model_type', None) != model_type:
+                self._unload_current()
+
         def _load() -> Any:
             service = DiffusionService(device=self.device)
             service.load_model(model_path or "", model_type=model_type)
