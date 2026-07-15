@@ -10,12 +10,15 @@ request1.onupgradeneeded = event => {
 };
 request1.onsuccess = event => { Imgdb = event.target.result; };
 
-const request2 = indexedDB.open("History", 1);
+const request2 = indexedDB.open("History", 2);
 request2.onerror = event => console.error("Database error: " + event.target.errorCode);
 request2.onupgradeneeded = event => {
     const db = event.target.result;
     if (!db.objectStoreNames.contains("nodes")) {
         db.createObjectStore("nodes", { keyPath: "id" });
+    }
+    if (!db.objectStoreNames.contains("messages")) {
+        db.createObjectStore("messages", { keyPath: "id" });
     }
 };
 request2.onsuccess = event => { HistoryDB = event.target.result; };
@@ -215,6 +218,44 @@ const history = {
 
 };
 
+const messages = {
+    save: (headId, msgs, timestamp) => {
+        return new Promise((resolve, reject) => {
+            if (!headId) return reject(new Error("No headId provided"));
+            if (!HistoryDB) return reject(new Error("Database not initialized"));
+            const transaction = HistoryDB.transaction(["messages"], "readwrite");
+            const store = transaction.objectStore("messages");
+            const request = store.put({ id: headId, messages: msgs, timestamp: timestamp || Date.now() });
+            request.onerror = () => reject(new Error("Failed to save messages"));
+            request.onsuccess = () => resolve();
+        });
+    },
+
+    get: (headId) => {
+        return new Promise((resolve, reject) => {
+            if (!headId) return resolve(null);
+            if (!HistoryDB) return reject(new Error("Database not initialized"));
+            const transaction = HistoryDB.transaction(["messages"], "readonly");
+            const store = transaction.objectStore("messages");
+            const request = store.get(headId);
+            request.onerror = () => reject(new Error("Failed to get messages"));
+            request.onsuccess = () => resolve(request.result || null);
+        });
+    },
+
+    delete: (headId) => {
+        return new Promise((resolve, reject) => {
+            if (!headId) return reject(new Error("No headId provided"));
+            if (!HistoryDB) return reject(new Error("Database not initialized"));
+            const transaction = HistoryDB.transaction(["messages"], "readwrite");
+            const store = transaction.objectStore("messages");
+            const request = store.delete(headId);
+            request.onerror = () => reject(new Error("Failed to delete messages"));
+            request.onsuccess = () => resolve();
+        });
+    }
+};
+
 const waitForDB = () => {
     return new Promise((resolve) => {
         let attempts = 0;
@@ -228,4 +269,4 @@ const waitForDB = () => {
     });
 };
 
-export { image, history, waitForDB };
+export { image, history, messages, waitForDB };

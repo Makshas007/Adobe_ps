@@ -1,32 +1,31 @@
 import { useState, useEffect } from 'react'
-import { MessageSquare, Trash2, Calendar } from 'lucide-react'
+import { GitBranch, Trash2, Calendar } from 'lucide-react'
+import { history, waitForDB } from '../utilities/indexedDB.js'
 
 export default function ChatHistoryView({ currentHeadId, onSelectChat, onDeleteChat }) {
   const [chats, setChats] = useState([])
 
   useEffect(() => {
-    const loadedChats = []
-    const isUUID = (key) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(key);
-    const messageStore = JSON.parse(localStorage.getItem('adobe_mock_ps_chats') || '{}')
-
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i)
-      if (isUUID(key)) {
-        const title = localStorage.getItem(key)
-        const chatData = messageStore[key] || {}
-        loadedChats.push({
-          id: key,
-          title: title || 'Untitled Project',
-          messages: chatData.messages || [
-            { role: 'assistant', text: 'Hello! I can help you edit this image. Try asking me to crop, resize, or apply a filter.' }
-          ],
-          timestamp: chatData.timestamp || Date.now()
-        })
-      }
+    const loadChats = async () => {
+      await waitForDB()
+      const heads = await history.getHeads()
+      const loadedChats = await Promise.all(heads.map(async (head) => {
+        const tree = await history.getTree(head.id)
+        const nodeCount = countNodes(tree)
+        const labels = collectLabels(tree)
+        return {
+          id: head.id,
+          title: head.filename || 'Untitled Project',
+          time: head.time || '',
+          timestamp: parseTime(head.time),
+          nodeCount,
+          lastEdit: labels[labels.length - 1] || ''
+        }
+      }))
+      loadedChats.sort((a, b) => b.timestamp - a.timestamp)
+      setChats(loadedChats)
     }
-    
-    loadedChats.sort((a, b) => b.timestamp - a.timestamp)
-    setChats(loadedChats)
+    loadChats()
   }, [])
 
   const handleDelete = async (chatId, e) => {
@@ -40,14 +39,14 @@ export default function ChatHistoryView({ currentHeadId, onSelectChat, onDeleteC
     <div className="chat-history-view">
       <div className="chat-history-header">
         <h1>Chat History</h1>
-        <p className="subtitle">Previous chat sessions with the AI editor assistant</p>
+        <p className="subtitle">Edit history trees from AI assistant sessions</p>
       </div>
 
       {chats.length === 0 ? (
         <div className="chat-history-empty">
-          <MessageSquare size={48} className="empty-icon" />
-          <p>No chat history found.</p>
-          <p className="small">Open the Editor, upload an image, and send a message to start a session.</p>
+          <GitBranch size={48} className="empty-icon" />
+          <p>No edit history found.</p>
+          <p className="small">Open the Editor, upload an image, and make edits to start a session.</p>
         </div>
       ) : (
         <div className="chat-history-list">
@@ -58,21 +57,21 @@ export default function ChatHistoryView({ currentHeadId, onSelectChat, onDeleteC
               onClick={() => onSelectChat(chat.id)}
             >
               <div className="chat-history-item-icon">
-                <MessageSquare size={18} />
+                <GitBranch size={18} />
               </div>
               <div className="chat-history-item-content">
                 <div className="chat-history-item-title-row">
                   <div className="chat-history-item-title">{chat.title}</div>
                   <div className="chat-history-item-time">
                     <Calendar size={11} style={{ marginRight: '4px' }} />
-                    {new Date(chat.timestamp).toLocaleString()}
+                    {chat.time}
                   </div>
                 </div>
                 <div className="chat-history-item-preview">
-                  {chat.messages[chat.messages.length - 1]?.text || 'No messages'}
+                  {chat.lastEdit || 'Uploaded'}
                 </div>
                 <div className="chat-history-item-count">
-                  {chat.messages.length} message{chat.messages.length !== 1 ? 's' : ''}
+                  {chat.nodeCount} node{chat.nodeCount !== 1 ? 's' : ''} in edit tree
                 </div>
               </div>
               <button 
@@ -88,4 +87,32 @@ export default function ChatHistoryView({ currentHeadId, onSelectChat, onDeleteC
       )}
     </div>
   )
+}
+
+function countNodes(tree) {
+  if (!tree) return 0
+  let count = 1
+  if (tree.children) {
+    for (const child of tree.children) {
+      count += countNodes(child)
+    }
+  }
+  return count
+}
+
+function collectLabels(tree) {
+  if (!tree) return []
+  const labels = [tree.label || '']
+  if (tree.children) {
+    for (const child of tree.children) {
+      labels.push(...collectLabels(child))
+    }
+  }
+  return labels.filter(Boolean)
+}
+
+function parseTime(timeStr) {
+  if (!timeStr) return 0
+  const d = new Date(timeStr)
+  return isNaN(d.getTime()) ? 0 : d.getTime()
 }
