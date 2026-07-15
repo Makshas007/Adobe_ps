@@ -149,9 +149,9 @@ export default function ChatWindow({ imageHistoryNode, head, onEditComplete, can
       setMessages((prev) => {
         const updated = [...prev, { role: 'assistant', text: 'Edit failed. Is the backend running?' }]
         saveChats(updated)
+        setDisabledMsg("")
         return updated
       })
-      setDisabledMsg("")
     }
     setDisabledMsg("")
   }
