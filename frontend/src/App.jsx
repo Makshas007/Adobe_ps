@@ -7,7 +7,7 @@ import CanvasEditor from './components/CanvasEditor'
 import ToolOptions from './components/ToolOptions'
 import LibraryView from './components/LibraryView'
 import ChatHistoryView from './components/ChatHistoryView'
-import { image, history, waitForDB } from './utilities/indexedDB.js'
+import { image, history, messages, waitForDB } from './utilities/indexedDB.js'
 import './App.css'
 import { blobToDataURL, dataURLtoBlob } from './utilities/type.js'
 
@@ -220,6 +220,7 @@ function App() {
   const handleDeleteChat = async (chatId) => {
     try {
       await history.delete(chatId)
+      await messages.delete(chatId).catch(err => console.warn("Failed to delete chat messages in DB:", err))
       localStorage.removeItem(chatId)
       const chats = JSON.parse(localStorage.getItem('adobe_mock_ps_chats') || '{}')
       delete chats[chatId]

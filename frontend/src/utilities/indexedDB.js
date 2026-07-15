@@ -201,6 +201,13 @@ const history = {
 
                 request.onerror = () => reject(new Error('Could not delete node #' + id));
                 request.onsuccess = async () => {
+                    if (node.imageId) {
+                        try {
+                            await image.deleteImage(node.imageId);
+                        } catch (err) {
+                            console.warn(`Failed to delete associated image ${node.imageId}:`, err);
+                        }
+                    }
                     if (node.nextNode && node.nextNode.length) {
                         try {
                             await Promise.all(node.nextNode.map(async nextId => await history.delete(nextId)));
