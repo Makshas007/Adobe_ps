@@ -7,6 +7,7 @@ export default function ChatWindow({ imageHistoryNode, head, onEditComplete, can
     { role: 'assistant', text: 'Hello! I can help you edit this image. Try asking me to crop, resize, or apply a filter.' },
   ])
   const [input, setInput] = useState('')
+  const [disabledMsg, setDisabledMsg] = useState('')
 
   // Load chat messages when active head changes
   useEffect(() => {
@@ -90,6 +91,7 @@ export default function ChatWindow({ imageHistoryNode, head, onEditComplete, can
   }, [handleSave])
 
   async function handleSend(e) {
+    setDisabledMsg("Editing in progress, Please Wait")
     e.preventDefault()
     if (!input.trim() || !imageHistoryNode) return
     
@@ -103,7 +105,7 @@ export default function ChatWindow({ imageHistoryNode, head, onEditComplete, can
         return updated
       })
     }
-
+    
     const prompt = input
     setMessages((prev) => {
       const updated = [...prev, { role: 'user', text: prompt }]
@@ -111,7 +113,7 @@ export default function ChatWindow({ imageHistoryNode, head, onEditComplete, can
       return updated
     })
     setInput('')
-
+    
     try {
       const res = await fetch('/edit', {
         method: 'POST',
@@ -131,7 +133,7 @@ export default function ChatWindow({ imageHistoryNode, head, onEditComplete, can
         })
         return
       }
-
+      
       const data = await res.json()
       const dataUri = `data:image/png;base64,${data.final_image}`
       let label = ''
@@ -152,6 +154,7 @@ export default function ChatWindow({ imageHistoryNode, head, onEditComplete, can
         return updated
       })
     }
+    setDisabledMsg("")
   }
 
   return (
@@ -169,8 +172,8 @@ export default function ChatWindow({ imageHistoryNode, head, onEditComplete, can
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder={imageHistoryNode ? "Ask me to edit the image..." : "Upload an image first"}
-          disabled={!imageHistoryNode}
+          placeholder={imageHistoryNode ? "Ask me to edit the image..." :disabledMsg? disabledMsg:"Upload an image first"}
+          disabled={!imageHistoryNode && disabledMsg.length}
         />
         <button type="submit" disabled={!imageHistoryNode}>Send</button>
       </form>
