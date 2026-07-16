@@ -195,11 +195,13 @@ export default function ToolOptions({
               </>
             )}
           </CollapsibleGroup>
-          <div className="tool-sidebar-field">
-            <button className="tool-option-btn tool-option-btn--full tool-option-btn--danger" onClick={onDeleteObject}>
-              Delete
-            </button>
-          </div>
+          {!selectedObject.isBgImage && (
+            <div className="tool-sidebar-field">
+              <button className="tool-option-btn tool-option-btn--full tool-option-btn--danger" onClick={onDeleteObject}>
+                Delete
+              </button>
+            </div>
+          )}
           </>
         )}
 

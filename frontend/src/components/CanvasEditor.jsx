@@ -55,7 +55,7 @@ const CanvasEditor = forwardRef(function CanvasEditor(
     if (skipSaveRef.current) return
     const canvas = fabricRef.current
     if (!canvas) return
-    const objects = canvas.getObjects().filter(o => !o.isCropRect)
+    const objects = canvas.getObjects().filter(o => o !== bgImageRef.current && !o.isCropRect)
     const bgSrc = bgImageRef.current?.getElement()?.src || null
     const state = JSON.stringify({
       objects: objects.map(o => o.toJSON(['isCropRect', 'isEraser'])),
@@ -91,10 +91,17 @@ const CanvasEditor = forwardRef(function CanvasEditor(
         }
         canvas.setViewportTransform([1, 0, 0, 1, 0, 0])
         canvas.setDimensions({ width: containerW, height: containerH })
+        const isSelect = activeToolRef.current === 'select'
         const fabricImage = new fabric.FabricImage(imgEl, {
-          selectable: false, evented: false, hasControls: false, hasBorders: false,
-          hoverCursor: 'default', originX: 'center', originY: 'center',
-          left: containerW / 2, top: containerH / 2,
+          selectable: isSelect,
+          evented: isSelect,
+          hasControls: isSelect,
+          hasBorders: isSelect,
+          hoverCursor: isSelect ? 'move' : 'default',
+          originX: 'center',
+          originY: 'center',
+          left: containerW / 2,
+          top: containerH / 2,
         })
         fabricImage.scale(scale)
         bgImageRef.current = fabricImage
@@ -205,9 +212,10 @@ const CanvasEditor = forwardRef(function CanvasEditor(
     const canvas = fabricRef.current
     if (!canvas) return null
     const obj = canvas.getActiveObject()
-    if (!obj || obj === bgImageRef.current) return null
+    if (!obj) return null
     const data = {
       type: obj.type,
+      isBgImage: obj === bgImageRef.current,
       left: Math.round(obj.left),
       top: Math.round(obj.top),
       width: Math.round(obj.getScaledWidth()),
@@ -259,7 +267,7 @@ const CanvasEditor = forwardRef(function CanvasEditor(
       const canvas = fabricRef.current
       if (!canvas) return
       const obj = canvas.getActiveObject()
-      if (!obj) return
+      if (!obj || obj === bgImageRef.current) return
       canvas.remove(obj)
       canvas.discardActiveObject()
       canvas.renderAll()
@@ -333,12 +341,13 @@ const CanvasEditor = forwardRef(function CanvasEditor(
           canvas.setViewportTransform([1, 0, 0, 1, 0, 0])
           canvas.setDimensions({ width: containerW, height: containerH })
 
+          const isSelect = activeToolRef.current === 'select'
           const fabricImage = new fabric.FabricImage(croppedImg, {
-            selectable: false,
-            evented: false,
-            hasControls: false,
-            hasBorders: false,
-            hoverCursor: 'default',
+            selectable: isSelect,
+            evented: isSelect,
+            hasControls: isSelect,
+            hasBorders: isSelect,
+            hoverCursor: isSelect ? 'move' : 'default',
             originX: 'center',
             originY: 'center',
             left: containerW / 2,
@@ -348,8 +357,6 @@ const CanvasEditor = forwardRef(function CanvasEditor(
           bgImageRef.current = fabricImage
           canvas.add(fabricImage)
           canvas.sendObjectToBack(fabricImage)
-
-          const isSelect = activeToolRef.current === 'select'
           userObjects.forEach(obj => {
             obj.set({
               left: (obj.left || 0) - left,
@@ -581,10 +588,17 @@ const CanvasEditor = forwardRef(function CanvasEditor(
       const scale = Math.min(containerW / srcW, containerH / srcH)
       canvas.setViewportTransform([1, 0, 0, 1, 0, 0])
       canvas.setDimensions({ width: containerW, height: containerH })
+      const isSelect = activeToolRef.current === 'select'
       const fabricImage = new fabric.FabricImage(newImgEl, {
-        selectable: false, evented: false, hasControls: false, hasBorders: false,
-        hoverCursor: 'default', originX: 'center', originY: 'center',
-        left: containerW / 2, top: containerH / 2,
+        selectable: isSelect,
+        evented: isSelect,
+        hasControls: isSelect,
+        hasBorders: isSelect,
+        hoverCursor: isSelect ? 'move' : 'default',
+        originX: 'center',
+        originY: 'center',
+        left: containerW / 2,
+        top: containerH / 2,
       })
       fabricImage.scale(scale)
       bgImageRef.current = fabricImage
@@ -1003,9 +1017,15 @@ const CanvasEditor = forwardRef(function CanvasEditor(
           if (obj === bgImageRef.current) {
             obj.selectable = true
             obj.evented = true
+            obj.hasControls = true
+            obj.hasBorders = true
+            obj.hoverCursor = 'move'
+          } else if (obj.isEraser) {
+            obj.selectable = false
+            obj.evented = false
             obj.hasControls = false
             obj.hasBorders = false
-            obj.hoverCursor = 'move'
+            obj.hoverCursor = 'default'
           } else {
             obj.selectable = true
             obj.evented = true
