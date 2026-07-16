@@ -426,7 +426,7 @@ function App() {
         </div>
         <div className="navbar-links">
           <button className={`nav-link ${view === 'editor' ? 'active' : ''}`} onClick={() => setView('editor')}>Editor</button>
-          <button className={`nav-link ${view === 'library' ? 'active' : ''}`} onClick={() => { let ans = confirm('Are you sure, you will lose any unsaved changes?'); if (ans) setView('library') }}>Library</button>
+          <button className={`nav-link ${view === 'library' ? 'active' : ''}`} onClick={() => { let ans = canvasRef?.current?.hasUnsavedChanges() ? confirm('Are you sure, you will lose any unsaved changes?') : true; if (ans) setView('library') }}>Library</button>
           <button className={`nav-link ${view === 'chatHistory' ? 'active' : ''}`} onClick={() => setView('chatHistory')}>Chat History</button>
         </div>
         <div className="user-nametag">
