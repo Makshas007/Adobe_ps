@@ -79,6 +79,7 @@ export default function ChatWindow({ imageHistoryNode, head, onEditComplete, can
         return updated
       })
     }
+    else{alert("No changes");}
   }, [canvasRef, imageHistoryNode, head, onEditComplete])
 
   useEffect(() => {

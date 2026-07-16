@@ -22,6 +22,7 @@ const CanvasEditor = forwardRef(function CanvasEditor(
   const wrapperRef = useRef(null)
   const fabricRef = useRef(null)
   const bgImageRef = useRef(null)
+  const isBgImageModifiedRef = useRef(false)
   const isPanning = useRef(false)
   const lastPanPos = useRef({ x: 0, y: 0 })
   const spaceHeld = useRef(false)
@@ -93,9 +94,15 @@ const CanvasEditor = forwardRef(function CanvasEditor(
         canvas.setDimensions({ width: containerW, height: containerH })
         const isSelect = activeToolRef.current === 'select'
         const fabricImage = new fabric.FabricImage(imgEl, {
-          selectable: false, evented: false, hasControls: false, hasBorders: false,
-          hoverCursor: 'default', originX: 'center', originY: 'center',
-          left: containerW / 2, top: containerH / 2,
+          selectable: isSelect,
+          evented: isSelect,
+          hasControls: isSelect,
+          hasBorders: isSelect,
+          hoverCursor: isSelect ? 'move' : 'default',
+          originX: 'center',
+          originY: 'center',
+          left: containerW / 2,
+          top: containerH / 2,
         })
         fabricImage.scale(scale)
         bgImageRef.current = fabricImage
@@ -270,6 +277,13 @@ const CanvasEditor = forwardRef(function CanvasEditor(
     exportImage: () => {
       const canvas = fabricRef.current
       if (!canvas || !bgImageRef.current) return null
+      
+      const activeObj = canvas.getActiveObject()
+      const vpt = canvas.viewportTransform ? [...canvas.viewportTransform] : [1, 0, 0, 1, 0, 0]
+      
+      canvas.discardActiveObject()
+      canvas.setViewportTransform([1, 0, 0, 1, 0, 0])
+      
       const img = bgImageRef.current
       const sw = img.getScaledWidth()
       const sh = img.getScaledHeight()
@@ -282,6 +296,13 @@ const CanvasEditor = forwardRef(function CanvasEditor(
         width: sw,
         height: sh,
       })
+      
+      canvas.setViewportTransform(vpt)
+      if (activeObj) {
+        canvas.setActiveObject(activeObj)
+      }
+      canvas.renderAll()
+      
       return dataUrl
     },
     applyCrop: (cropData) => {
@@ -455,7 +476,7 @@ const CanvasEditor = forwardRef(function CanvasEditor(
       const canvas = fabricRef.current
       if (!canvas || !bgImageRef.current) return false
       const userObjects = canvas.getObjects().filter(o => o !== bgImageRef.current && !o.isCropRect)
-      return userObjects.length > 0
+      return userObjects.length > 0 || isBgImageModifiedRef.current
     },
     removeSelected: () => {
       const canvas = fabricRef.current
@@ -476,6 +497,7 @@ const CanvasEditor = forwardRef(function CanvasEditor(
       bgImageRef.current = null
       canvasHistoryRef.current = []
       canvasHistoryIndexRef.current = -1
+      isBgImageModifiedRef.current = false
       notifyHistoryChange()
     },
   }))
@@ -637,7 +659,12 @@ const CanvasEditor = forwardRef(function CanvasEditor(
     const handleCanvasChange = () => { saveCanvasState() }
     canvas.on('object:added', handleCanvasChange)
     canvas.on('object:removed', handleCanvasChange)
-    canvas.on('object:modified', handleCanvasChange)
+    canvas.on('object:modified', (opt) => {
+      if (opt?.target === bgImageRef.current || canvas.getActiveObject() === bgImageRef.current) {
+        isBgImageModifiedRef.current = true
+      }
+      saveCanvasState()
+    })
 
     const handlePathCreated = (opt) => {
       if (activeToolRef.current === 'brush') {
@@ -728,6 +755,7 @@ const CanvasEditor = forwardRef(function CanvasEditor(
     if (!imageUrl) {
       canvas.clear()
       bgImageRef.current = null
+      isBgImageModifiedRef.current = false
       return
     }
 
@@ -735,6 +763,7 @@ const CanvasEditor = forwardRef(function CanvasEditor(
 
     canvas.getObjects().forEach(obj => canvas.remove(obj))
     bgImageRef.current = null
+    isBgImageModifiedRef.current = false
 
     const imgEl = new Image()
     imgEl.crossOrigin = 'anonymous'
