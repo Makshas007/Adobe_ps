@@ -55,7 +55,7 @@ const CanvasEditor = forwardRef(function CanvasEditor(
     if (skipSaveRef.current) return
     const canvas = fabricRef.current
     if (!canvas) return
-    const objects = canvas.getObjects().filter(o => o !== bgImageRef.current && !o.isCropRect)
+    const objects = canvas.getObjects().filter(o => !o.isCropRect && o !== bgImageRef.current)
     const bgSrc = bgImageRef.current?.getElement()?.src || null
     const state = JSON.stringify({
       objects: objects.map(o => o.toJSON(['isCropRect', 'isEraser'])),
@@ -93,15 +93,9 @@ const CanvasEditor = forwardRef(function CanvasEditor(
         canvas.setDimensions({ width: containerW, height: containerH })
         const isSelect = activeToolRef.current === 'select'
         const fabricImage = new fabric.FabricImage(imgEl, {
-          selectable: isSelect,
-          evented: isSelect,
-          hasControls: isSelect,
-          hasBorders: isSelect,
-          hoverCursor: isSelect ? 'move' : 'default',
-          originX: 'center',
-          originY: 'center',
-          left: containerW / 2,
-          top: containerH / 2,
+          selectable: false, evented: false, hasControls: false, hasBorders: false,
+          hoverCursor: 'default', originX: 'center', originY: 'center',
+          left: containerW / 2, top: containerH / 2,
         })
         fabricImage.scale(scale)
         bgImageRef.current = fabricImage
@@ -123,8 +117,8 @@ const CanvasEditor = forwardRef(function CanvasEditor(
     const state = JSON.parse(canvasHistoryRef.current[canvasHistoryIndexRef.current])
     const objects = state.objects || state
     const bgSrc = state.bgSrc || null
-    const toRemove = canvas.getObjects().filter(o => o !== bgImageRef.current && !o.isCropRect)
-    toRemove.forEach(o => canvas.remove(o))
+    canvas.getObjects().filter(o => !o.isCropRect).forEach(o => canvas.remove(o))
+    bgImageRef.current = null
     const restoreObjects = () => {
       fabric.util.enlivenObjects(objects).then(newObjects => {
         newObjects.forEach(o => canvas.add(o))
@@ -146,8 +140,8 @@ const CanvasEditor = forwardRef(function CanvasEditor(
     const state = JSON.parse(canvasHistoryRef.current[canvasHistoryIndexRef.current])
     const objects = state.objects || state
     const bgSrc = state.bgSrc || null
-    const toRemove = canvas.getObjects().filter(o => o !== bgImageRef.current && !o.isCropRect)
-    toRemove.forEach(o => canvas.remove(o))
+    canvas.getObjects().filter(o => !o.isCropRect).forEach(o => canvas.remove(o))
+    bgImageRef.current = null
     const restoreObjects = () => {
       fabric.util.enlivenObjects(objects).then(newObjects => {
         newObjects.forEach(o => canvas.add(o))
@@ -737,15 +731,17 @@ const CanvasEditor = forwardRef(function CanvasEditor(
       return
     }
 
-    canvas.getObjects().forEach(obj => {
-      if (obj !== bgImageRef.current) canvas.remove(obj)
-    })
+    let cancelled = false
+
+    canvas.getObjects().forEach(obj => canvas.remove(obj))
+    bgImageRef.current = null
 
     const imgEl = new Image()
     imgEl.crossOrigin = 'anonymous'
     imgEl.onload = () => {
+      if (cancelled) return
       const currentCanvas = fabricRef.current
-      if (!currentCanvas || currentCanvas !== canvas) return
+      if (!currentCanvas) return
       fitImageToContainer(currentCanvas, imgEl)
       onImageLoadedRef.current?.()
       if (pendingRestoreRef.current && canvasHistoryIndexRef.current >= 0) {
@@ -761,6 +757,9 @@ const CanvasEditor = forwardRef(function CanvasEditor(
       }
     }
     imgEl.src = imageUrl
+
+    return () => { cancelled = true }
+
   }, [imageUrl, fitImageToContainer])
 
   useEffect(() => {
