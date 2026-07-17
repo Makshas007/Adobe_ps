@@ -48,9 +48,9 @@ function layoutNodes(rawNodes, rawEdges) {
   })
 }
 
-function HistoryNode({ data, selected }) {
+function HistoryNode({ data, selected, currNode }) {
   return (
-    <BaseNode data={data} selected={selected}>
+    <BaseNode data={data} selected={selected} currId={currNode?.id}>
       <div className="history-node__subtitle">{data.subtitle}</div>
     </BaseNode>
   )
