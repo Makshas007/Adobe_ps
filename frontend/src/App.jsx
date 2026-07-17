@@ -12,6 +12,7 @@ import OperationsPanel from './components/OperationsPanel'
 import { image, history, messages, waitForDB } from './utilities/indexedDB.js'
 import './App.css'
 import { blobToDataURL, dataURLtoBlob } from './utilities/type.js'
+import { Settings, History, TextSearch, MessageCircle } from 'lucide-react'
 
 function App() {
   const [imageUrl, setImageUrl] = useState(null)
@@ -19,6 +20,7 @@ function App() {
   const [head, setHead] = useState({})
   const [historyVersion, setHistoryVersion] = useState(0)
   const [view, setView] = useState('editor')
+  const [activeRightTab, setActiveRightTab] = useState('chat')
   const [redoOptions, setRedoOptions] = useState([])
   const [canCanvasUndo, setCanCanvasUndo] = useState(false)
   const [canCanvasRedo, setCanCanvasRedo] = useState(false)
@@ -634,24 +636,68 @@ function App() {
             />
           </div>
           <div className="right-column">
-            <OperationsPanel
-              steps={operationSteps}
-              visibility={operationVisibility}
-              onToggle={handleToggleOperation}
-              onDelete={handleDeleteOperation}
-              originalImage={originalImageUrl || imageUrl}
-              onApplyChanges={handleApplyOperations}
-            />
-            <AiInspector
-              metadata={aiMetadata}
-              plan={aiPlan}
-              critique={aiCritique}
-              onAnalyze={handleAnalyze}
-              analyzing={analyzing}
-              hasImage={!!imageUrl}
-            />
-            <TreePanel headId={head.id} historyVersion={historyVersion} setNode={setNode} currNode={imageHistoryNode} />
-            <ChatWindow imageHistoryNode={imageHistoryNode} head={head} onEditComplete={handleEditComplete} canvasRef={canvasRef} />
+            <div className="right-column-tabs">
+              <button
+                className={`right-tab-btn ${activeRightTab === 'operations' ? 'active' : ''}`}
+                onClick={() => setActiveRightTab('operations')}
+                title="Operations"
+              >
+                <Settings size={16} />
+                <span>Operations</span>
+              </button>
+              <button
+                className={`right-tab-btn ${activeRightTab === 'history' ? 'active' : ''}`}
+                onClick={() => setActiveRightTab('history')}
+                title="Edit History"
+              >
+                <History size={16} />
+                <span>History</span>
+              </button>
+              <button
+                className={`right-tab-btn ${activeRightTab === 'inspector' ? 'active' : ''}`}
+                onClick={() => setActiveRightTab('inspector')}
+                title="AI Inspector"
+              >
+                <TextSearch size={16} />
+                <span>AI Inspector</span>
+              </button>
+              <button
+                className={`right-tab-btn ${activeRightTab === 'chat' ? 'active' : ''}`}
+                onClick={() => setActiveRightTab('chat')}
+                title="Chat"
+              >
+                <MessageCircle size={16} />
+                <span>Chat</span>
+              </button>
+            </div>
+            <div className="right-column-content">
+              {activeRightTab === 'operations' && (
+                <OperationsPanel
+                  steps={operationSteps}
+                  visibility={operationVisibility}
+                  onToggle={handleToggleOperation}
+                  onDelete={handleDeleteOperation}
+                  originalImage={originalImageUrl || imageUrl}
+                  onApplyChanges={handleApplyOperations}
+                />
+              )}
+              {activeRightTab === 'inspector' && (
+                <AiInspector
+                  metadata={aiMetadata}
+                  plan={aiPlan}
+                  critique={aiCritique}
+                  onAnalyze={handleAnalyze}
+                  analyzing={analyzing}
+                  hasImage={!!imageUrl}
+                />
+              )}
+              {activeRightTab === 'history' && (
+                <TreePanel headId={head.id} historyVersion={historyVersion} setNode={setNode} currNode={imageHistoryNode} />
+              )}
+              {activeRightTab === 'chat' && (
+                <ChatWindow imageHistoryNode={imageHistoryNode} head={head} onEditComplete={handleEditComplete} canvasRef={canvasRef} />
+              )}
+            </div>
           </div>
         </div>
       )}

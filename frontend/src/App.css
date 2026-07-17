@@ -2040,3 +2040,88 @@
 .operations-apply:hover {
   opacity: 0.85;
 }
+
+/* ── Right Column Tabularise Styles ── */
+.right-column-tabs {
+  display: flex;
+  background: var(--toolbar-bg);
+  border-bottom: 1px solid var(--node-border);
+  padding: 6px;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.right-tab-btn {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  padding: 8px 4px;
+  font-size: 10px;
+  font-weight: 500;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: all 0.15s ease;
+}
+
+.right-tab-btn:hover {
+  background: var(--node-bg);
+  color: var(--text);
+}
+
+.right-tab-btn.active {
+  background: var(--node-bg);
+  color: lime;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.right-column-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+}
+
+.right-column-content > .tree-panel {
+  flex: 1;
+  height: 100%;
+}
+
+.right-column-content > .operations-panel {
+  flex: 1;
+  height: 100%;
+  margin-bottom: 0;
+  border: none;
+  border-radius: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.right-column-content > .operations-panel .operations-list {
+  max-height: none;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.right-column-content > .ai-inspector {
+  flex: 1;
+  height: 100%;
+  border: none;
+  border-radius: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.right-column-content > .ai-inspector .inspector-content {
+  max-height: none;
+  flex: 1;
+  overflow-y: auto;
+}
+
