@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import gc
+import os
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -70,6 +71,10 @@ class OperationHandler:
         else:
             details = {}
 
+        from app.utils.image_utils import image_to_base64
+        mask_b64 = image_to_base64(mask.convert("L")) if mask else ""
+        details["mask_image"] = mask_b64
+
         return result_image, details
 
     def handle_remove(
@@ -132,6 +137,27 @@ class OperationHandler:
         result = service.process("replace_background", image, process_params)
         return result, {}
 
+    def _fallback_remove_bg(self, image: Image.Image, context: Optional[Dict[str, Any]] = None) -> Image.Image:
+        logger.warning("rembg failed. Falling back to SAM-based background removal.")
+        if context is None or "mask" not in context:
+            _, mask_details = self.handle_segment(image, {"target": "main subject", "save_mask": False}, context)
+            if context is None:
+                context = {}
+            mask = mask_details.get("mask_image")
+            if mask is None:
+                return image
+        else:
+            mask = context.get("mask")
+        if mask is None:
+            return image
+        from PIL import ImageFilter
+        mask = mask.convert("L").resize(image.size)
+        mask = mask.filter(ImageFilter.SMOOTH)
+        mask = mask.point(lambda p: 255 if p > 60 else 0)
+        image_rgba = image.convert("RGBA")
+        image_rgba.putalpha(mask)
+        return image_rgba
+
     def handle_remove_background(
         self,
         image: Image.Image,
@@ -144,32 +170,53 @@ class OperationHandler:
         else:
             logger.info("Pipeline step: remove_background (general-object path)")
 
+        import gc
+        gc.collect()
+        try:
+            import torch
+            torch.cuda.empty_cache()
+            from app.utils.gpu import clear_gpu
+            clear_gpu()
+        except Exception:
+            pass
+
         try:
             import rembg
             import numpy as np
             from PIL import ImageFilter
 
-            # ── Choose rembg model based on content type ──────────────────
             if is_human:
-                # u2net_human_seg is specifically trained for human matting
-                # and produces dramatically better masks around hair, fingers,
-                # and clothing edges compared to isnet-general-use.
                 session = rembg.new_session("u2net_human_seg")
                 logger.info("Using rembg model: u2net_human_seg")
             else:
                 session = rembg.new_session("isnet-general-use")
                 logger.info("Using rembg model: isnet-general-use")
 
-            # Step 1: Get the AI mask from rembg
-            result = rembg.remove(
-                image,
-                session=session,
-                post_process_mask=True,
-            )
+            try:
+                result = rembg.remove(
+                    image,
+                    session=session,
+                    post_process_mask=True,
+                )
+            except Exception as rembg_err:
+                err_str = str(rembg_err)
+                if "Half" in err_str or "float" in err_str.lower() or "dtype" in err_str.lower():
+                    logger.warning("rembg dtype error, falling back to SAM: %s", err_str)
+                    result_rgba = self._fallback_remove_bg(image, context)
+                    return result_rgba, {}
+                raise
+
+            if result.size != image.size:
+                result = result.resize(image.size, Image.Resampling.LANCZOS)
+
+            logger.debug("rembg result size after resize: %s", result.size)
+            logger.debug("image size: %s", image.size)
+
             ai_alpha = np.array(result.split()[3])
 
             img_np = np.array(image.convert("RGB")).astype(np.float32)
             h, w = img_np.shape[:2]
+            logger.debug("img_np shape: %s, ai_alpha shape: %s", img_np.shape, ai_alpha.shape)
 
             if is_human:
                 # ── Human-specific path ───────────────────────────────────
@@ -235,8 +282,14 @@ class OperationHandler:
                 color_alpha = np.clip((diff - 5.0) / 10.0, 0.0, 1.0) * 255.0
                 color_alpha = color_alpha.astype(np.uint8)
 
+                logger.debug("color_alpha shape: %s", color_alpha.shape)
+
                 # Step 4: Combine AI mask with color-distance mask
-                combined_alpha = np.maximum(ai_alpha, color_alpha)
+                try:
+                    combined_alpha = np.maximum(ai_alpha, color_alpha)
+                except ValueError as ve:
+                    logger.warning("Shape mismatch combining masks: ai_alpha=%s color_alpha=%s", ai_alpha.shape, color_alpha.shape)
+                    combined_alpha = color_alpha
 
                 # Step 5: Dilate by 2px to recover clipped text edges
                 alpha_img = Image.fromarray(combined_alpha, mode="L")
@@ -247,19 +300,6 @@ class OperationHandler:
             orig_rgba = image.convert("RGBA")
             r_orig, g_orig, b_orig, _ = orig_rgba.split()
             result = Image.merge("RGBA", (r_orig, g_orig, b_orig, alpha_img))
-
-            # Step 7: Auto-crop transparent borders for a tight result
-            bbox = result.getbbox()
-            if bbox:
-                pad_x = max(10, int(w * 0.02))
-                pad_y = max(10, int(h * 0.02))
-                crop_box = (
-                    max(0, bbox[0] - pad_x),
-                    max(0, bbox[1] - pad_y),
-                    min(w, bbox[2] + pad_x),
-                    min(h, bbox[3] + pad_y),
-                )
-                result = result.crop(crop_box)
 
             return result, {}
         except ImportError:
@@ -397,6 +437,17 @@ class PipelineExecutor:
             duration=duration,
         )
 
+    def _compute_mask(self, before: Image.Image, after: Image.Image) -> Image.Image:
+        if after.size != before.size:
+            after = after.resize(before.size, Image.Resampling.LANCZOS)
+        before_np = np.array(before.convert("RGB"), dtype=np.float32)
+        after_np = np.array(after.convert("RGB"), dtype=np.float32)
+        diff = np.abs(before_np - after_np)
+        diff_gray = diff.mean(axis=2)
+        threshold = 5.0
+        mask_np = np.where(diff_gray > threshold, 255, 0).astype(np.uint8)
+        return Image.fromarray(mask_np, mode="L")
+
     def _execute_sync(
         self,
         plan: List[Dict[str, Any]],
@@ -422,6 +473,8 @@ class PipelineExecutor:
             step_start = time.monotonic()
 
             try:
+                before_image = current_image.copy()
+
                 handler = self._operation_map.get(op_name)
                 if handler is None:
                     raise ValueError(f"No handler registered for operation: {op_name}")
@@ -429,6 +482,16 @@ class PipelineExecutor:
                 current_image, details = handler(current_image, params, context)
                 if current_image.mode != "RGBA":
                     current_image = ensure_rgb(current_image)
+
+                mask = details.pop("mask_image", None) if details else None
+                if mask is None:
+                    mask = self._compute_mask(before_image, current_image)
+                else:
+                    if isinstance(mask, Image.Image):
+                        mask = mask.convert("L")
+                    else:
+                        mask = self._compute_mask(before_image, current_image)
+                mask_b64 = image_to_base64(mask)
 
                 intermediate = save_image(
                     current_image,
@@ -440,6 +503,7 @@ class PipelineExecutor:
                 step_entry = {
                     "operation": op_name,
                     "image": image_to_base64(current_image),
+                    "mask": mask_b64,
                     "duration_ms": round(step_duration, 2),
                     "details": details if details else None,
                 }

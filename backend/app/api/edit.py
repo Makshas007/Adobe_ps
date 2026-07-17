@@ -4,7 +4,7 @@ import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
@@ -13,10 +13,14 @@ from app.dependencies import get_explanation_service, get_planner, get_pipeline_
 from app.schemas.requests import EditRequest
 from app.schemas.responses import (
     ChangeDescriptionResponse,
+    CritiqueResponse,
     EditResponse,
     ExecutionLogEntryResponse,
+    ExecutionPlanResponse,
     ExplanationResponse,
     JobStatusResponse,
+    PlanStepResponse,
+    SceneMetadataResponse,
     StepInfo,
 )
 from app.services.execution_log import ExecutionLog
@@ -26,6 +30,7 @@ from app.services.planner import Planner
 from app.services.pipeline import PipelineExecutor
 from app.utils.image_utils import data_url_to_image, ensure_rgb, image_to_base64, load_image
 from app.utils.logger import get_logger
+from app.vision.engine import ImageUnderstandingEngine
 
 logger = get_logger(__name__)
 
@@ -33,6 +38,15 @@ router = APIRouter(tags=["edit"])
 
 JobStore = Dict[str, Dict[str, Any]]
 _jobs: JobStore = {}
+
+_vision_engine: Optional[ImageUnderstandingEngine] = None
+
+
+def get_vision_engine() -> ImageUnderstandingEngine:
+    global _vision_engine
+    if _vision_engine is None:
+        _vision_engine = ImageUnderstandingEngine()
+    return _vision_engine
 
 
 def _get_upload_path(filename: str, settings: Settings) -> Path:
@@ -94,6 +108,12 @@ async def edit_image(
 
     logger.info("Job %s: Starting edit with prompt: %.80s", job_id, request.prompt)
 
+    engine = get_vision_engine()
+    scene_metadata = engine.analyze(input_image)
+    logger.info("Job %s: Image analysis complete: %s", job_id, scene_metadata.scene_type)
+
+    metadata_response = SceneMetadataResponse(**scene_metadata.to_dict())
+
     try:
         plan = await planner.create_plan(request.prompt)
     except GeminiError as exc:
@@ -117,10 +137,12 @@ async def edit_image(
         "final_image": "",
         "execution_log": [],
         "explanation": None,
+        "metadata": metadata_response,
+        "plan": plan,
+        "critique": None,
         "error": None,
     }
 
-    # Prune jobs older than 1 hour (keep memory usage down)
     now = time.time()
     try:
         to_delete = []
@@ -144,6 +166,7 @@ async def edit_image(
             StepInfo(
                 operation=s["operation"],
                 image=s["image"],
+                mask=s.get("mask"),
                 duration_ms=s["duration_ms"],
                 details=s.get("details"),
             )
@@ -177,6 +200,31 @@ async def edit_image(
             ],
         )
 
+        critique_result = None
+        try:
+            if steps_data and len(steps_data) > 0:
+                from app.critic.critic import Critic
+                critic = Critic()
+                critique = await critic.evaluate(
+                    original=input_image,
+                    edited=data_url_to_image(f"data:image/png;base64,{final_base64}"),
+                    metadata=scene_metadata.to_dict(),
+                    execution_log=execution_log,
+                )
+                critique_result = CritiqueResponse(
+                    passed=critique.passed,
+                    score=critique.score,
+                    issues=[i.__dict__ for i in critique.issues],
+                    suggestions=critique.suggestions,
+                )
+        except Exception as crit_exc:
+            logger.warning("Critic evaluation failed: %s", crit_exc)
+
+        plan_response = ExecutionPlanResponse(
+            steps=[PlanStepResponse(**s.to_dict()) for s in plan.steps],
+            reasoning=plan.reasoning,
+        ) if hasattr(plan, 'steps') else None
+
         response = EditResponse(
             job_id=job_id,
             status="completed",
@@ -185,6 +233,9 @@ async def edit_image(
             total_duration_ms=round(total_duration, 2),
             execution_log=execution_log_response,
             explanation=explanation,
+            metadata=metadata_response,
+            plan=plan_response,
+            critique=critique_result,
         )
 
         _jobs[job_id].update({
@@ -194,6 +245,9 @@ async def edit_image(
             "total_duration_ms": round(total_duration, 2),
             "execution_log": [entry.to_dict() for entry in execution_log.entries],
             "explanation": explanation.model_dump(),
+            "metadata": metadata_response.model_dump() if metadata_response else None,
+            "plan": plan_response.model_dump() if plan_response else None,
+            "critique": critique_result.model_dump() if critique_result else None,
         })
 
         logger.info(

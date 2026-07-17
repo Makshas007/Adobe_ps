@@ -7,6 +7,8 @@ import CanvasEditor from './components/CanvasEditor'
 import ToolOptions, { TOOLS_WITH_OPTIONS } from './components/ToolOptions'
 import LibraryView from './components/LibraryView'
 import ChatHistoryView from './components/ChatHistoryView'
+import AiInspector from './components/AiInspector'
+import OperationsPanel from './components/OperationsPanel'
 import { image, history, messages, waitForDB } from './utilities/indexedDB.js'
 import './App.css'
 import { blobToDataURL, dataURLtoBlob } from './utilities/type.js'
@@ -35,6 +37,13 @@ function App() {
   })
 
   const [selectedObject, setSelectedObject] = useState(null)
+  const [aiMetadata, setAiMetadata] = useState(null)
+  const [aiPlan, setAiPlan] = useState(null)
+  const [aiCritique, setAiCritique] = useState(null)
+  const [analyzing, setAnalyzing] = useState(false)
+  const [operationSteps, setOperationSteps] = useState([])
+  const [operationVisibility, setOperationVisibility] = useState([])
+  const [originalImageUrl, setOriginalImageUrl] = useState(null)
 
   useEffect(() => {
     setToolOptionsOpen(TOOLS_WITH_OPTIONS.includes(activeTool))
@@ -142,6 +151,12 @@ function App() {
 
   const handleUpload = async ({ url, filename }) => {
     setImageUrl(url)
+    setOriginalImageUrl(null)
+    setOperationSteps([])
+    setOperationVisibility([])
+    setAiMetadata(null)
+    setAiPlan(null)
+    setAiCritique(null)
     setFilterValues({ Brightness: 0, Contrast: 0, Saturation: 0, HueRotation: 0, Blur: 0 })
     setActiveTool('select')
     await new Promise(resolve => { resolveImageLoadedRef.current = resolve })
@@ -190,6 +205,12 @@ function App() {
     setImageDimensions(null)
     setCursorPos(null)
     setObjectCount(0)
+    setOperationSteps([])
+    setOperationVisibility([])
+    setOriginalImageUrl(null)
+    setAiMetadata(null)
+    setAiPlan(null)
+    setAiCritique(null)
     setFilterValues({
       Brightness: 0,
       Contrast: 0,
@@ -380,10 +401,118 @@ function App() {
     await setNode(imageHistoryNode.prevNode)
   }, [imageHistoryNode, setNode])
 
-  const handleEditComplete = async (dataUri, label, filename) => {
+  const handleAnalyze = useCallback(async () => {
+    if (!imageUrl || analyzing) return
+    setAnalyzing(true)
+    try {
+      const res = await fetch('/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: imageUrl }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setAiMetadata(data.metadata)
+      }
+    } catch (err) {
+      console.error('Analyze failed:', err)
+    }
+    setAnalyzing(false)
+  }, [imageUrl, analyzing])
+
+  const compositeOperations = useCallback(async (steps, visibility, origUrl) => {
+    if (!steps.length || !canvasRef.current) return
+    const canvas = canvasRef.current.getCanvas()
+    if (!canvas) return
+
+    const vis = visibility || steps.map(() => true)
+    const canvasEl = document.createElement('canvas')
+    const ctx = canvasEl.getContext('2d')
+
+    const loadImage = (src) => new Promise((resolve, reject) => {
+      const img = new window.Image()
+      img.onload = () => resolve(img)
+      img.onerror = reject
+      img.src = src
+    })
+
+    const baseImg = await loadImage(origUrl || imageUrl)
+    canvasEl.width = baseImg.naturalWidth || baseImg.width
+    canvasEl.height = baseImg.naturalHeight || baseImg.height
+    ctx.drawImage(baseImg, 0, 0)
+
+    for (let i = 0; i < steps.length; i++) {
+      if (vis[i] === false) continue
+      const step = steps[i]
+      if (!step.image) continue
+      try {
+        const stepImg = await loadImage(`data:image/png;base64,${step.image}`)
+        if (step.mask) {
+          const maskImg = await loadImage(`data:image/png;base64,${step.mask}`)
+          const tempCanvas = document.createElement('canvas')
+          tempCanvas.width = canvasEl.width
+          tempCanvas.height = canvasEl.height
+          const tempCtx = tempCanvas.getContext('2d')
+          tempCtx.drawImage(stepImg, 0, 0, tempCanvas.width, tempCanvas.height)
+          tempCtx.globalCompositeOperation = 'destination-in'
+          tempCtx.drawImage(maskImg, 0, 0, tempCanvas.width, tempCanvas.height)
+          ctx.drawImage(tempCanvas, 0, 0)
+        } else {
+          ctx.drawImage(stepImg, 0, 0, canvasEl.width, canvasEl.height)
+        }
+      } catch (e) {
+        console.warn('Failed to composite step', i, e)
+      }
+    }
+
+    return canvasEl.toDataURL('image/png')
+  }, [imageUrl])
+
+  const handleToggleOperation = useCallback(async (index) => {
+    const newVis = [...operationVisibility]
+    newVis[index] = newVis[index] === false ? true : false
+    setOperationVisibility(newVis)
+
+    if (operationSteps.length > 0) {
+      const composed = await compositeOperations(operationSteps, newVis, originalImageUrl)
+      if (composed) {
+        setImageUrl(composed)
+      }
+    }
+  }, [operationSteps, operationVisibility, originalImageUrl, compositeOperations])
+
+  const handleDeleteOperation = useCallback(async (index) => {
+    const newSteps = operationSteps.filter((_, i) => i !== index)
+    const newVis = operationVisibility.filter((_, i) => i !== index)
+    setOperationSteps(newSteps)
+    setOperationVisibility(newVis)
+
+    if (newSteps.length > 0) {
+      const composed = await compositeOperations(newSteps, newVis, originalImageUrl)
+      if (composed) {
+        setImageUrl(composed)
+      }
+    } else {
+      setImageUrl(originalImageUrl)
+    }
+  }, [operationSteps, operationVisibility, originalImageUrl, compositeOperations])
+
+  const handleEditComplete = async (dataUri, label, filename, editData) => {
     setImageUrl(dataUri)
     setFilterValues({ Brightness: 0, Contrast: 0, Saturation: 0, HueRotation: 0, Blur: 0 })
     setActiveTool('select')
+
+    if (editData) {
+      if (editData.metadata) setAiMetadata(editData.metadata)
+      if (editData.plan) setAiPlan(editData.plan)
+      if (editData.critique) setAiCritique(editData.critique)
+      if (editData.steps && editData.steps.length > 0) {
+        setOriginalImageUrl(dataUri)
+        setOperationSteps(editData.steps)
+        setOperationVisibility(editData.steps.map(() => true))
+      }
+    }
+
     const blob = dataURLtoBlob(dataUri)
     const { id } = await image.addImage(blob)
     const node = await history.addNode({ label, time: new Date().toLocaleString(), imageId: id, filename }, imageHistoryNode.id)
@@ -391,6 +520,17 @@ function App() {
     setImageHistoryNode(node)
     setHistoryVersion(v => v + 1)
   }
+
+  const handleApplyOperations = useCallback(async () => {
+    if (operationSteps.length === 0) return
+    const composed = await compositeOperations(operationSteps, operationVisibility, originalImageUrl)
+    if (composed) {
+      const label = operationVisibility.map((v, i) =>
+        v !== false ? (operationSteps[i].operation || operationSteps[i].tool) : null
+      ).filter(Boolean).join(' -> ')
+      handleEditComplete(composed, label, localStorage.getItem(head.id) || 'Untitled_Img.jpg', null)
+    }
+  }, [operationSteps, operationVisibility, originalImageUrl, compositeOperations, head, handleEditComplete])
 
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -494,6 +634,22 @@ function App() {
             />
           </div>
           <div className="right-column">
+            <OperationsPanel
+              steps={operationSteps}
+              visibility={operationVisibility}
+              onToggle={handleToggleOperation}
+              onDelete={handleDeleteOperation}
+              originalImage={originalImageUrl || imageUrl}
+              onApplyChanges={handleApplyOperations}
+            />
+            <AiInspector
+              metadata={aiMetadata}
+              plan={aiPlan}
+              critique={aiCritique}
+              onAnalyze={handleAnalyze}
+              analyzing={analyzing}
+              hasImage={!!imageUrl}
+            />
             <TreePanel headId={head.id} historyVersion={historyVersion} setNode={setNode} currNode={imageHistoryNode} />
             <ChatWindow imageHistoryNode={imageHistoryNode} head={head} onEditComplete={handleEditComplete} canvasRef={canvasRef} />
           </div>
