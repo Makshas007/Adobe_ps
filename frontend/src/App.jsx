@@ -9,6 +9,7 @@ import LibraryView from './components/LibraryView'
 import ChatHistoryView from './components/ChatHistoryView'
 import AiInspector from './components/AiInspector'
 import OperationsPanel from './components/OperationsPanel'
+import LayersPanel from './components/LayersPanel'
 import { image, history, messages, waitForDB } from './utilities/indexedDB.js'
 import './App.css'
 import { blobToDataURL, dataURLtoBlob } from './utilities/type.js'
@@ -46,6 +47,8 @@ function App() {
   const [operationSteps, setOperationSteps] = useState([])
   const [operationVisibility, setOperationVisibility] = useState([])
   const [originalImageUrl, setOriginalImageUrl] = useState(null)
+  const [layers, setLayers] = useState([])
+  const [selectedLayerId, setSelectedLayerId] = useState(null)
 
   useEffect(() => {
     setToolOptionsOpen(TOOLS_WITH_OPTIONS.includes(activeTool))
@@ -422,6 +425,21 @@ function App() {
     setAnalyzing(false)
   }, [imageUrl, analyzing])
 
+  const extractLayersFromSteps = useCallback((steps) => {
+    if (!steps || !steps.length) return []
+    const result = []
+    for (const step of steps) {
+      if (step.details && step.details.layers && Array.isArray(step.details.layers)) {
+        for (const layer of step.details.layers) {
+          if (!result.find(l => l.id === layer.id)) {
+            result.push({ ...layer, visible: layer.visible !== false })
+          }
+        }
+      }
+    }
+    return result
+  }, [])
+
   const compositeOperations = useCallback(async (steps, visibility, origUrl) => {
     if (!steps.length || !canvasRef.current) return
     const canvas = canvasRef.current.getCanvas()
@@ -470,6 +488,64 @@ function App() {
     return canvasEl.toDataURL('image/png')
   }, [imageUrl])
 
+  const compositeLayers = useCallback(async (layerList, origUrl) => {
+    if (!layerList.length || !canvasRef.current) return null
+    const canvas = canvasRef.current.getCanvas()
+    if (!canvas) return null
+
+    const canvasEl = document.createElement('canvas')
+    const ctx = canvasEl.getContext('2d')
+
+    const loadImage = (src) => new Promise((resolve, reject) => {
+      const img = new window.Image()
+      img.onload = () => resolve(img)
+      img.onerror = reject
+      img.src = src
+    })
+
+    const baseImg = await loadImage(origUrl || imageUrl)
+    canvasEl.width = baseImg.naturalWidth || baseImg.width
+    canvasEl.height = baseImg.naturalHeight || baseImg.height
+    ctx.drawImage(baseImg, 0, 0)
+
+    const typeOrder = { background: 0, composite: 1, foreground: 2, mask: 3 }
+    const sorted = [...layerList]
+      .filter(l => l.visible !== false)
+      .sort((a, b) => (typeOrder[a.layer_type] || 1) - (typeOrder[b.layer_type] || 1))
+
+    for (const layer of sorted) {
+      if (!layer.image) continue
+      try {
+        const img = await loadImage(`data:image/png;base64,${layer.image}`)
+        ctx.drawImage(img, 0, 0, canvasEl.width, canvasEl.height)
+      } catch (e) {
+        console.warn('Failed to composite layer', layer.id, e)
+      }
+    }
+
+    return canvasEl.toDataURL('image/png')
+  }, [imageUrl])
+
+  const handleToggleLayer = useCallback(async (layerId) => {
+    let newLayers
+    setLayers(prev => {
+      newLayers = prev.map(l =>
+        l.id === layerId ? { ...l, visible: !l.visible } : l
+      )
+      return newLayers
+    })
+    setTimeout(async () => {
+      if (newLayers && newLayers.length > 0) {
+        const composed = await compositeLayers(newLayers, originalImageUrl || imageUrl)
+        if (composed) setImageUrl(composed)
+      }
+    }, 0)
+  }, [originalImageUrl, imageUrl, compositeLayers])
+
+  const handleSelectLayer = useCallback(async (layerId) => {
+    setSelectedLayerId(layerId)
+  }, [])
+
   const handleToggleOperation = useCallback(async (index) => {
     const newVis = [...operationVisibility]
     newVis[index] = newVis[index] === false ? true : false
@@ -512,6 +588,11 @@ function App() {
         setOriginalImageUrl(dataUri)
         setOperationSteps(editData.steps)
         setOperationVisibility(editData.steps.map(() => true))
+        const extractedLayers = extractLayersFromSteps(editData.steps)
+        if (extractedLayers.length > 0) {
+          setLayers(extractedLayers)
+          setSelectedLayerId(extractedLayers[0].id)
+        }
       }
     }
 
@@ -662,6 +743,14 @@ function App() {
                 <span>AI Inspector</span>
               </button>
               <button
+                className={`right-tab-btn ${activeRightTab === 'layers' ? 'active' : ''}`}
+                onClick={() => setActiveRightTab('layers')}
+                title="Layers"
+              >
+                <span style={{ fontSize: 16, fontWeight: 'bold' }}>▦</span>
+                <span>Layers</span>
+              </button>
+              <button
                 className={`right-tab-btn ${activeRightTab === 'chat' ? 'active' : ''}`}
                 onClick={() => setActiveRightTab('chat')}
                 title="Chat"
@@ -681,6 +770,14 @@ function App() {
                   onApplyChanges={handleApplyOperations}
                 />
               )}
+              {activeRightTab === 'layers' && (
+                <LayersPanel
+                  layers={layers}
+                  onToggle={handleToggleLayer}
+                  onSelect={handleSelectLayer}
+                  selectedLayerId={selectedLayerId}
+                />
+              )}
               {activeRightTab === 'inspector' && (
                 <AiInspector
                   metadata={aiMetadata}
@@ -695,7 +792,15 @@ function App() {
                 <TreePanel headId={head.id} historyVersion={historyVersion} setNode={setNode} currNode={imageHistoryNode} />
               )}
               {activeRightTab === 'chat' && (
-                <ChatWindow imageHistoryNode={imageHistoryNode} head={head} onEditComplete={handleEditComplete} canvasRef={canvasRef} />
+                <ChatWindow
+                  imageHistoryNode={imageHistoryNode}
+                  head={head}
+                  onEditComplete={handleEditComplete}
+                  canvasRef={canvasRef}
+                  layers={layers}
+                  selectedLayerId={selectedLayerId}
+                  onSelectLayer={handleSelectLayer}
+                />
               )}
             </div>
           </div>
