@@ -169,6 +169,44 @@ curl -X POST http://localhost:8000/edit \
   ],
   "final_image": "iVBORw0KGgoAAAANSUhEUgAAAA...",
   "total_duration_ms": 37685.44,
+  "execution_log": [
+    {
+      "operation": "segment",
+      "target": "person",
+      "model": "sam-vit-base",
+      "parameters": { "target": "person" },
+      "status": "success",
+      "reason": "",
+      "duration": 9405.12
+    },
+    {
+      "operation": "remove",
+      "target": "",
+      "model": "sd-inpaint",
+      "parameters": {},
+      "status": "success",
+      "reason": "",
+      "duration": 14423.87
+    }
+  ],
+  "explanation": {
+    "plain_english": "The person was identified and removed from the image. The background was preserved. The overall colors were then adjusted to a cyberpunk style with neon tones.",
+    "technical_summary": "- Person segmented using SAM.\n- Object removed via inpainting.\n- Style transferred via InstructPix2Pix.",
+    "changes": [
+      {
+        "operation": "segment",
+        "target": "person",
+        "description": "The person was identified and separated.",
+        "technical": "Segmented using SAM (ViT-B)."
+      },
+      {
+        "operation": "remove",
+        "target": "",
+        "description": "The person was removed from the image.",
+        "technical": "Object removed via inpainting."
+      }
+    ]
+  },
   "error": null
 }
 ```
@@ -288,6 +326,102 @@ The Gemini planner maps natural language to structured operations. Here's how pr
 
 ---
 
+## Post-Edit Explanation System
+
+Every completed edit returns an `execution_log` and `explanation` alongside the edited image. This ensures users always know exactly what the AI did and why.
+
+### Execution Log
+
+The `ExecutionLog` records every pipeline step with these fields:
+
+| Field | Type | Description |
+|---|---|---|
+| `operation` | string | Operation name (`segment`, `remove`, `replace_background`, etc.) |
+| `target` | string | Target object (e.g. `"person"`, `"background"`) |
+| `model` | string | AI model used (`sam-vit-base`, `sd-inpaint`, `instruct-pix2pix`, etc.) |
+| `parameters` | object | Parameters passed to the operation |
+| `status` | string | `"success"`, `"skipped"`, or `"failed"` |
+| `reason` | string | Why an operation was skipped or failed |
+| `duration` | float | Execution time in milliseconds |
+
+Log entries are appended by the pipeline executor at each step. This is the **single source of truth** — explanations are always derived from the log, never from the original prompt.
+
+### Explanation Service
+
+Located at `app/services/explanation/`. Architecture:
+
+```
+ExplanationService
+├── generate(prompt, execution_log, metadata) → ExplanationResult
+│
+├── [provider] ExplanationProvider (ABC)
+│   ├── GeminiExplanationProvider    # LLM-backed (default when GEMINI_API_KEY is set)
+│   └── LocalExplanationProvider     # Deterministic fallback (no LLM needed)
+│
+└── prompts.py                       # All LLM prompt templates (isolated)
+```
+
+**ExplanationResult** contains:
+
+| Field | Description |
+|---|---|
+| `plain_english` | 2-3 sentence plain-English explanation of what actually happened |
+| `technical_summary` | Bullet-point summary for advanced users |
+| `changes[]` | Per-operation descriptions with `operation`, `target`, `description`, `technical` |
+
+### Provider Selection
+
+The `get_explanation_service()` dependency in `dependencies.py` selects the provider:
+
+1. If `GEMINI_API_KEY` is configured → uses `GeminiExplanationProvider`
+2. Otherwise → uses `LocalExplanationProvider` (deterministic, always works)
+
+A local LLM can be swapped in later by implementing the `ExplanationProvider` ABC.
+
+### Design Rules
+
+- **Log is truth** — The explanation generator receives the execution log and must describe only what the log contains
+- **No inference** — Never infer operations that don't exist in the log
+- **Status-aware** — Successful operations are described; skipped/failed operations are mentioned accurately (never falsely described as successful)
+- **Deterministic fallback** — Without an LLM, the local provider produces accurate explanations directly from the log
+- **UI-friendly** — The `plain_english` field is designed to be shown directly to end users
+
+### Example
+
+Input execution log:
+
+```
+segment → person → success
+replace_background → beach → success
+upscale → skipped (image already high resolution)
+```
+
+Local provider produces:
+> "The person was separated from the original background and placed onto a beach scene. Image upscaling was not performed."
+
+Technical summary:
+> ```
+> - Person segmented using SAM.
+> - Background replaced via inpainting.
+> - upscale skipped.
+> ```
+
+### Unit Tests
+
+```bash
+cd backend
+source venv/bin/activate
+python -m pytest tests/ -v
+```
+
+Tests verify:
+- Skipped operations are never described as successful
+- Failed operations are never described as successful
+- Changes list accurately reflects the execution log
+- Empty/all-skipped/all-failed logs produce correct output
+
+---
+
 ## Configuration
 
 All settings via `.env` file:
@@ -315,24 +449,34 @@ All settings via `.env` file:
 ```
 ┌──────────┐    ┌──────────────┐    ┌─────────────┐    ┌──────────────────┐
 │  Client  │ → │  POST /edit  │ → │    Gemini   │ → │  Pipeline Executor│
-│ (curl/UI) │    │              │    │   Planner   │    │     (context)     │
-└──────────┘    └──────────────┘    └─────────────┘    └──────────────────┘
-                                      Natural language     │  ┌───────────┐
-                                      → structured plan     ├─→│SAM (CPU)  │──→ mask ─┐
-                                                            │  └───────────┘          │
-                                                            │  ┌──────────────────────┘
-                                                            │  ▼
-                                                            │  ┌──────────────────────────┐
-                                                            ├─→│SD Inpaint (GPU, float16) │
-                                                            │  │ (mask-guided inpainting) │
-                                                            │  └──────────────────────────┘
-                                                            │  ┌──────────────────────────┐
-                                                            ├─→│InstructPix2Pix (GPU)     │
-                                                            │  │ (style transfer, fallback)│
-                                                            │  └──────────────────────────┘
-                                                            │  ┌────────┐
-                                                            └─→│ ESRGAN │
-                                                               └────────┘
+│ (curl/UI)│    │              │    │   Planner   │    │     (context)     │
+└──────────┘    └──────────────┘    └─────────────┘    └────────┬─────────┘
+                  ↓                      ↑                       │
+               Response                  Plan               ExecutionLog
+                  ↓                      │                       │
+            ┌──────────┐                 └───────────────────────┘
+            │Explanation│                                        │
+            │  Service  │ ← Execution Log (single source of truth)
+            │ (LLM/Local)│                                        │
+            └─────┬─────┘                                        │
+                  ↓                                              │
+            ExplanationResult                              Steps (images)
+            (plain_english,                               ┌─────────────┐
+             technical_summary,     ← ← ← ← ← ← ← ← ← ← ←│SAM (CPU)    │──→ mask ─┐
+             changes[])                                    └─────────────┘          │
+                  ↓                                        ┌──────────────────────┘
+            ┌──────────┐                                   ▼
+            │  Client  │                              ┌──────────────────────────┐
+            │ Response │                              │SD Inpaint (GPU, float16) │
+            │  (JSON)  │                              │ (mask-guided inpainting) │
+            └──────────┘                              └──────────────────────────┘
+                                                      ┌──────────────────────────┐
+                                                      │InstructPix2Pix (GPU)     │
+                                                      │ (style transfer, fallback)│
+                                                      └──────────────────────────┘
+                                                      ┌────────┐
+                                                      │ ESRGAN │
+                                                      └────────┘
 ```
 
 **Key design decisions:**
@@ -383,13 +527,24 @@ backend/
 │   │   ├── diffusion_service.py   # InstructPix2Pix / SD Inpaint wrappers + LoRA adapter loader
 │   │   ├── sam_service.py         # SAM segmentation (ViT-Base, runs on CPU)
 │   │   ├── esrgan_service.py      # ESRGAN upscaling (with PIL fallback)
-│   │   └── pipeline.py            # Operation handler + pipeline executor (context-passing between steps)
+│   │   ├── execution_log.py       # ExecutionLog dataclass (single source of truth for all pipeline ops)
+│   │   ├── pipeline.py            # Operation handler + pipeline executor (context-passing between steps)
+│   │   └── explanation/           # Post-edit explanation service
+│   │       ├── __init__.py        # Exports: ExplanationService, ExplanationProvider, ExplanationResult
+│   │       ├── interfaces.py      # ABC + data classes (ChangeDescription, ExplanationResult)
+│   │       ├── service.py         # ExplanationService with fallback
+│   │       ├── prompts.py         # Isolated LLM prompt templates
+│   │       ├── gemini_provider.py # LLM-backed explanation generation
+│   │       └── local_provider.py  # Deterministic fallback (no LLM)
 │   │
 │   └── utils/
 │       ├── image_utils.py         # load/save/convert/base64 helpers
 │       ├── gpu.py                 # CUDA detection, memory management (no-torch fallback)
 │       └── logger.py              # Structured logging with timestamps
 │
+├── tests/                          # Pytest test suite
+│   ├── test_execution_log.py       # ExecutionLog filtering & serialization
+│   └── test_explanation.py         # LocalExplanationProvider reliability
 ├── uploads/                       # Uploaded images
 ├── outputs/                       # Edited images (organized by job_id)
 ├── temp/                          # Temporary masks and intermediates
@@ -514,6 +669,23 @@ DIFFUSION_LORA_ADAPTER_NAME="remove_bg"
 ```
 
 The adapter is auto-applied every time the diffusion model loads. Call `unload_lora()` from code to remove it per-session. Multiple adapters can be loaded by calling `load_lora()` multiple times with different names; use `set_adapters()` from diffusers to blend them.
+
+---
+
+## Running Tests
+
+```bash
+cd backend
+source venv/bin/activate
+python -m pytest tests/ -v
+```
+
+The test suite covers:
+
+| Test file | What it tests |
+|---|---|
+| `tests/test_execution_log.py` | `ExecutionLog` append, filtering (success/skipped/failed), serialization |
+| `tests/test_explanation.py` | `LocalExplanationProvider` — skipped/failed ops never falsely described, changes match log, edge cases |
 
 ---
 
