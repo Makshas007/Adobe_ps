@@ -1,4 +1,5 @@
 import { useRef, useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import {
   Upload,
   Scissors,
@@ -30,18 +31,30 @@ export default function ToolbarRibbon({
   toolOptionsOpen, setToolOptionsOpen,
 }) {
   const fileInputRef = useRef(null);
+  const redoBtnRef = useRef(null);
   const [redoDropdownOpen, setRedoDropdownOpen] = useState(false);
+  const [dropdownCoords, setDropdownCoords] = useState({ top: 0, left: 0 });
 
   useEffect(() => {
     if (!redoDropdownOpen) return;
     const handleOutsideClick = (e) => {
-      if (!e.target.closest(".redo-container")) {
+      if (!e.target.closest(".redo-container") && !e.target.closest(".redo-dropdown")) {
         setRedoDropdownOpen(false);
       }
     };
     document.addEventListener("click", handleOutsideClick);
     return () => document.removeEventListener("click", handleOutsideClick);
   }, [redoDropdownOpen]);
+
+  useEffect(() => {
+    if (redoDropdownOpen && redoBtnRef.current) {
+      const rect = redoBtnRef.current.getBoundingClientRect();
+      setDropdownCoords({
+        top: Math.max(0, Math.min(rect.top, window.innerHeight - 340)),
+        left: rect.right + 8
+      });
+    }
+  }, [redoDropdownOpen, redoOptions]);
 
   useEffect(() => {
     setRedoDropdownOpen(false);
@@ -195,7 +208,7 @@ export default function ToolbarRibbon({
           };
 
           return (
-            <div key={action.label} className="redo-container">
+            <div key={action.label} className="redo-container" ref={redoBtnRef}>
               <button 
                 className={`tool-btn ${redoDropdownOpen ? 'tool-btn--active' : ''}`} 
                 title={action.label}
@@ -204,8 +217,16 @@ export default function ToolbarRibbon({
               >
                 <Icon size={16} />
               </button>
-              {redoDropdownOpen && redoOptions.length > 1 && (
-                <div className="redo-dropdown">
+              {redoDropdownOpen && redoOptions.length > 1 && createPortal(
+                <div 
+                  className="redo-dropdown"
+                  style={{
+                    position: 'fixed',
+                    top: `${dropdownCoords.top}px`,
+                    left: `${dropdownCoords.left}px`,
+                    bottom: 'auto'
+                  }}
+                >
                   {redoOptions.map((option) => (
                     <button
                       key={option.id}
@@ -232,7 +253,8 @@ export default function ToolbarRibbon({
                       </div>
                     </button>
                   ))}
-                </div>
+                </div>,
+                document.body
               )}
             </div>
           );
