@@ -12,17 +12,17 @@ import dagre from 'dagre'
 import BaseNode from './BaseNode'
 import { history } from '../utilities/indexedDB'
 
-function flattenTree(node, edges) {
+function flattenTree(node, edges, currId) {
   const nodes = []
   const children = node.children || []
   nodes.push({
     id: node.id,
     type: 'historyNode',
-    data: { title: node.label, subtitle: node.time },
+    data: { title: node.label, subtitle: node.time, id: node.id, currId },
   })
   for (const child of children) {
     edges.push({ id: `${node.id}->${child.id}`, source: node.id, target: child.id })
-    const [childNodes] = flattenTree(child, edges)
+    const [childNodes] = flattenTree(child, edges, currId)
     nodes.push(...childNodes)
   }
   return [nodes, edges]
@@ -48,9 +48,9 @@ function layoutNodes(rawNodes, rawEdges) {
   })
 }
 
-function HistoryNode({ data, selected, currNode }) {
+function HistoryNode({ data, selected }) {
   return (
-    <BaseNode data={data} selected={selected} currId={currNode?.id}>
+    <BaseNode data={data} selected={selected} currId={data.currId}>
       <div className="history-node__subtitle">{data.subtitle}</div>
     </BaseNode>
   )
@@ -96,9 +96,9 @@ const connectionLineStyle = { stroke: '#FF1E8A', strokeWidth: 2, strokeDasharray
 function FlowCanvas({ miniature, treeData, currNode, setNode }) {
   const { initialNodes, initialEdges } = useMemo(() => {
     const edges = []
-    const [rawNodes] = flattenTree(treeData, edges)
+    const [rawNodes] = flattenTree(treeData, edges, currNode?.id)
     return { initialNodes: layoutNodes(rawNodes, edges), initialEdges: edges }
-  }, [treeData])
+  }, [treeData, currNode?.id])
   
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes)
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges)
