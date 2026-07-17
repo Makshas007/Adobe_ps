@@ -15,7 +15,7 @@
   background: var(--toolbar-bg);
   border-right: 1px solid var(--node-border);
   flex-shrink: 0;
-  width: 48px;
+  width: 60px;
   height: 100%;
   box-sizing: border-box;
 }
