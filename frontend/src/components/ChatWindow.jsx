@@ -182,7 +182,7 @@ export default function ChatWindow({ imageHistoryNode, head, onEditComplete, can
       data.steps.forEach(
         (step, i) => label += (i + 1 === data.steps.length) ? step.operation : step.operation + ' -> '
       )
-      onEditComplete(dataUri, label, localStorage.getItem(head.id) || 'Untitled_Img.jpg')
+      onEditComplete(dataUri, label, localStorage.getItem(head.id) || 'Untitled_Img.jpg', data)
       setMessages((prev) => {
         const updated = [...prev, {
           role: 'assistant',

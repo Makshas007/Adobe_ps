@@ -1,6 +1,18 @@
 # Adobe Mock PS Backend
 
-Prompt-based image editing via natural language. Upload an image, describe the edit, and the backend orchestrates Gemini for planning + local AI models (SAM, InstructPix2Pix) for execution.
+AI-assisted image editing with deep image understanding, structured planning, tool reasoning, and quality critique. Upload an image, describe the edit, and the backend orchestrates: **Image Understanding → Planning Agent → Tool Dispatcher → Execution → Critic**.
+
+```mermaid
+flowchart TD
+    A["User Prompt"] --> B["Image Understanding Engine"]
+    B --> C["Structured Scene Representation"]
+    C --> D["Planning Agent"]
+    D --> E["Editing Strategy"]
+    E --> F["Tool Dispatcher"]
+    F --> G["Editing Engine"]
+    G --> H["Critic / QA"]
+    H --> I["Final Image"]
+```
 
 ```bash
 # One-shot example
@@ -54,9 +66,10 @@ Open `http://localhost:8000/docs` for the interactive Swagger UI.
 
 The 4 GB VRAM on the RTX 2050 is tight but sufficient with these settings:
 
-- **SAM** runs on **CPU** (saves VRAM for diffusion)
+- **All models run on CUDA when available** — SAM, diffusion, and ESRGAN all auto-detect and use GPU
+- **SAM** uses **float16** on CUDA for reduced VRAM; falls back to CPU if CUDA unavailable
 - **InstructPix2Pix** / **Stable Diffusion Inpainting** loads in **float16** on GPU
-- Models are **unloaded** between pipeline steps
+- Models are **unloaded** between pipeline steps (only one model in GPU at a time)
 - **SAM mask is passed to the diffusion pipeline** for guided inpainting — the mask from the `segment` step is consumed by the subsequent `remove` or `replace_background` step to constrain regeneration to the relevant area instead of a blind full-image img2img pass
 
 ```bash
@@ -135,11 +148,12 @@ curl -X POST http://localhost:8000/edit \
 
 **How it works:**
 
-1. Gemini decomposes the prompt into a structured plan (e.g. `segment → remove → change_style`)
-2. The pipeline executes each operation sequentially, passing a **context dict** between steps
-3. The `segment` step stores the SAM-generated mask in the context; `remove` / `replace_background` consume it to constrain diffusion to the relevant area (masked inpainting, not blind full-image img2img)
-4. Each step produces an intermediate image (returned as base64)
-5. The final image is the output of the last step
+1. **Image Understanding** — The Vision Engine analyzes the image (scene type, colors, brightness, contrast, faces, sharpness, lighting, noise)
+2. **Planning** — The Planning Agent receives the user prompt + image metadata + tool registry (33 editing tools with strengths/weaknesses) and generates a structured execution plan
+3. **Dispatch** — The Tool Dispatcher maps each plan step to a registered tool or legacy handler
+4. **Execution** — Each step runs sequentially, passing context (masks, intermediate images) between steps
+5. **Critique** — The Critic/QA module evaluates the result for artifacts, halos, color clipping, over-sharpening, noise, color shift, and brightness shifts
+6. **Response** — Returns the final image + step images + explanation + metadata + plan + critique
 
 **Response:**
 
@@ -151,18 +165,21 @@ curl -X POST http://localhost:8000/edit \
     {
       "operation": "segment",
       "image": "iVBORw0KGgoAAAANSUhEUgAAAA...",
+      "mask": "iVBORw0KGgoAAAANSUhEUgAAAA...",
       "duration_ms": 9405.12,
-      "details": { "mask": "temp/mask_abc.png" }
+      "details": { "mask_path": "temp/mask_abc.png" }
     },
     {
       "operation": "remove",
       "image": "iVBORw0KGgoAAAANSUhEUgAAAA...",
+      "mask": "iVBORw0KGgoAAAANSUhEUgAAAA...",
       "duration_ms": 14423.87,
       "details": null
     },
     {
       "operation": "change_style",
       "image": "iVBORw0KGgoAAAANSUhEUgAAAA...",
+      "mask": "iVBORw0KGgoAAAANSUhEUgAAAA...",
       "duration_ms": 13586.45,
       "details": null
     }
@@ -207,7 +224,74 @@ curl -X POST http://localhost:8000/edit \
       }
     ]
   },
-  "error": null
+  "error": null,
+
+  "metadata": {
+    "scene_type": "landscape",
+    "dominant_colors": [{"hex":"#2a4b7c","rgb":[42,75,124],"percentage":0.35,"name":"blue"}],
+    "brightness": 118.5,
+    "contrast": 45.2,
+    "has_faces": false,
+    "lighting": "normal",
+    "aesthetic_score": 6.2
+  },
+
+  "plan": {
+    "reasoning": "Image is a landscape with blue sky. User wants cyberpunk. Step 1: segment sky. Step 2: replace background with neon city. Step 3: apply color grading.",
+    "steps": [
+      {"operation": "segment sky", "tool": "segment", "params": {"target":"sky"}, "reasoning":"Isolate the sky for replacement", "priority": 1},
+      {"operation": "replace background", "tool": "background_replacement", "params": {"prompt":"cyberpunk city neon night"}, "reasoning":"Generate cyberpunk background", "priority": 2, "requires_mask": true, "mask_source": "segment sky"},
+      {"operation": "color grade", "tool": "color_grading", "params": {"shadows":{"r":-10,"g":0,"b":20},"highlights":{"r":30,"g":0,"b":-10}}, "reasoning":"Add purple-blue cyberpunk color cast", "priority": 3}
+    ],
+    "estimated_cost": "high"
+  },
+
+  "critique": {
+    "passed": false,
+    "score": 0.75,
+    "issues": [
+      {"type": "color_cast", "severity": 0.35, "description": "Minor hue shift detected", "suggestion": "Consider white balance correction"}
+    ],
+    "suggestions": ["Consider white balance correction"]
+  }
+}
+```
+
+**Per-step masks for non-destructive toggling:**
+
+Each step now includes a `mask` field (base64 PNG) showing exactly which pixels were changed by that operation. The frontend can use these masks to:
+
+- **Toggle operations on/off** — Compositing only visible steps' masked regions
+- **Show per-operation visual diff** — Highlight exactly what changed
+- **Non-destructive layering** — Each edit stays as a toggleable layer
+
+Example mask compositing logic (JavaScript):
+```javascript
+async function compositeSteps(originalUrl, steps, visibility) {
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  const base = await loadImage(originalUrl);
+  canvas.width = base.naturalWidth;
+  canvas.height = base.naturalHeight;
+  ctx.drawImage(base, 0, 0);
+  for (let i = 0; i < steps.length; i++) {
+    if (visibility[i] === false) continue;
+    const stepImg = await loadImage(`data:image/png;base64,${steps[i].image}`);
+    if (steps[i].mask) {
+      const maskImg = await loadImage(`data:image/png;base64,${steps[i].mask}`);
+      const temp = document.createElement('canvas');
+      temp.width = canvas.width;
+      temp.height = canvas.height;
+      const tCtx = temp.getContext('2d');
+      tCtx.drawImage(stepImg, 0, 0, canvas.width, canvas.height);
+      tCtx.globalCompositeOperation = 'destination-in';
+      tCtx.drawImage(maskImg, 0, 0, canvas.width, canvas.height);
+      ctx.drawImage(temp, 0, 0);
+    } else {
+      ctx.drawImage(stepImg, 0, 0, canvas.width, canvas.height);
+    }
+  }
+  return canvas.toDataURL('image/png');
 }
 ```
 
@@ -292,6 +376,44 @@ curl http://localhost:8000/history/$JOB_ID
 
 ---
 
+### `POST /analyze`
+
+Analyze an image and return structured scene metadata. No editing — pure understanding.
+
+```bash
+curl -X POST http://localhost:8000/analyze \
+  -H "Content-Type: application/json" \
+  -d '{"image": "upload_a1b2c3d4e5f6.png"}'
+```
+
+```json
+{
+  "metadata": {
+    "scene_type": "portrait",
+    "faces": [{"x": 120, "y": 80, "width": 60, "height": 75}],
+    "people_count": 1,
+    "dominant_colors": [
+      {"hex": "#d4a574", "rgb": [212, 165, 116], "percentage": 0.32, "name": "orange"}
+    ],
+    "brightness": 142.0,
+    "contrast": 38.5,
+    "sharpness": 320.0,
+    "is_blurry": false,
+    "has_faces": true,
+    "lighting": "bright",
+    "aesthetic_score": 7.1
+  },
+  "suggestions": [
+    "Faces detected. Try portrait enhancement or skin smoothing."
+  ],
+  "processing_time_ms": 45.2
+}
+```
+
+Also accepts data URLs: `{"image": "data:image/png;base64,..."}`.
+
+---
+
 ## Editing Prompt Guide
 
 The Gemini planner maps natural language to structured operations. Here's how prompts are interpreted:
@@ -315,14 +437,35 @@ The Gemini planner maps natural language to structured operations. Here's how pr
 
 ## Supported Operations
 
+### AI / Model Operations
+
 | Operation | Model | Description |
-|---|---|---|---|
-| `segment` | SAM (ViT-Base) | Segments an object by target name; generates a mask (stored in pipeline context) |
-| `remove` | InstructPix2Pix / **SD Inpainting** | Removes the main subject. Uses **masked inpainting** when SAM mask is available from a prior `segment` step; falls back to InstructPix2Pix img2img |
-| `replace_background` | InstructPix2Pix / **SD Inpainting** | Replaces image background. **Inverts** the SAM mask to inpaint only the background area when a mask is available |
-| `remove_background` | rembg | Makes the background transparent. Portraits use `u2net_human_seg` for finer hair and clothing edges; other images use `isnet-general-use`. |
+|---|---|---|
+| `segment` | SAM (ViT-Base) | Segments an object by target name; generates a mask |
+| `remove` | InstructPix2Pix / SD Inpainting | Removes the main subject via masked inpainting |
+| `replace_background` | InstructPix2Pix / SD Inpainting | Replaces background by inverting SAM mask |
+| `remove_background` | rembg | Makes background transparent (human-optimized with `u2net_human_seg`) |
 | `change_style` / `style_transfer` | InstructPix2Pix | Applies artistic style transformation |
-| `upscale` | PIL Bicubic (4×) | Upscales the image (ESRGAN when available) |
+| `upscale` | ESRGAN / PIL Bicubic | AI super-resolution upscaling |
+| `inpainting` | SD Inpainting | Fill masked region with AI-generated content |
+| `generative_fill` | SD Inpainting | Context-aware content fill |
+| `background_replacement` | SD Inpainting | Replace background with AI-generated scene |
+| `face_enhancement` | OpenCV / AI | Enhance facial features |
+| `object_removal` | SD Inpainting | Remove objects via mask-guided inpainting |
+
+### Traditional / CV Operations (no GPU needed)
+
+| Category | Tools |
+|---|---|
+| **Adjustments** | brightness, contrast, saturation, hue, exposure, temperature, tint, levels, curves, shadow_recovery, highlight_recovery |
+| **Filters** | sharpen, blur, gaussian_blur, denoise |
+| **Transforms** | crop, rotate, resize |
+| **Color** | color_grading, black_and_white, film_lut |
+| **Effects** | vignette |
+| **Portrait** | skin_smoothing |
+| **Restoration** | healing |
+
+The **Tool Registry** (`app/tools/registry.py`) maintains specs for all 33 tools with purpose, strengths/weaknesses, best/avoid cases, parameters, GPU cost, and latency.
 
 ---
 
@@ -447,63 +590,98 @@ All settings via `.env` file:
 ## Architecture
 
 ```
-┌──────────┐    ┌──────────────┐    ┌─────────────┐    ┌──────────────────┐
-│  Client  │ → │  POST /edit  │ → │    Gemini   │ → │  Pipeline Executor│
-│ (curl/UI)│    │              │    │   Planner   │    │     (context)     │
-└──────────┘    └──────────────┘    └─────────────┘    └────────┬─────────┘
-                  ↓                      ↑                       │
-               Response                  Plan               ExecutionLog
-                  ↓                      │                       │
-            ┌──────────┐                 └───────────────────────┘
-            │Explanation│                                        │
-            │  Service  │ ← Execution Log (single source of truth)
-            │ (LLM/Local)│                                        │
-            └─────┬─────┘                                        │
-                  ↓                                              │
-            ExplanationResult                              Steps (images)
-            (plain_english,                               ┌─────────────┐
-             technical_summary,     ← ← ← ← ← ← ← ← ← ← ←│SAM (CPU)    │──→ mask ─┐
-             changes[])                                    └─────────────┘          │
-                  ↓                                        ┌──────────────────────┘
-            ┌──────────┐                                   ▼
-            │  Client  │                              ┌──────────────────────────┐
-            │ Response │                              │SD Inpaint (GPU, float16) │
-            │  (JSON)  │                              │ (mask-guided inpainting) │
-            └──────────┘                              └──────────────────────────┘
-                                                      ┌──────────────────────────┐
-                                                      │InstructPix2Pix (GPU)     │
-                                                      │ (style transfer, fallback)│
-                                                      └──────────────────────────┘
-                                                      ┌────────┐
-                                                      │ ESRGAN │
-                                                      └────────┘
+┌────────────┐
+│   Client   │
+└─────┬──────┘
+      │ POST /edit  POST /analyze
+      ▼
+┌─────────────────────────────────────────────────────┐
+│                    API Layer                         │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐           │
+│  │  /edit   │  │ /analyze │  │ /upload  │  ...       │
+│  └────┬─────┘  └────┬─────┘  └──────────┘           │
+└───────┼──────────────┼───────────────────────────────┘
+        │              │
+        ▼              ▼
+┌─────────────────────────────────────────────────────┐
+│              Image Understanding Engine              │
+│  (OpenCV / PIL / MediaPipe / CLIP / Florence-2)     │
+│  → Scene, Objects, Colors, Faces, Depth, Quality    │
+│  → Structured SceneMetadata                         │
+└──────────────────────┬──────────────────────────────┘
+                       │ metadata
+                       ▼
+┌─────────────────────────────────────────────────────┐
+│                Planning Agent                        │
+│  (Gemini or heuristic fallback)                     │
+│  • Receives: prompt + metadata + tool registry      │
+│  • Reasons about editing strategy                   │
+│  • Outputs: structured ExecutionPlan                │
+└──────────────────────┬──────────────────────────────┘
+                       │ plan steps
+                       ▼
+┌─────────────────────────────────────────────────────┐
+│                Tool Dispatcher                       │
+│  • Maps each plan step → registered tool            │
+│  • Falls back to legacy OperationHandler            │
+│  • Passes context (masks, images) between steps     │
+└──────────────────────┬──────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────┐
+│              Model Manager + Models                  │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌────────┐ │
+│  │SAM (CPU) │ │SD Inpaint│ │Instruct- │ │ESRGAN  │ │
+│  │          │ │(GPU)     │ │Pix2Pix   │ │(GPU)   │ │
+│  └──────────┘ └──────────┘ └──────────┘ └────────┘ │
+└──────────────────────┬──────────────────────────────┘
+                       │ edited image
+                       ▼
+┌─────────────────────────────────────────────────────┐
+│                Critic / QA                           │
+│  • Checks: noise, sharpness, clipping, artifacts    │
+│  • Checks: halos, color shift, brightness shift     │
+│  • Generates corrective plan if quality is poor     │
+└──────────────────────┬──────────────────────────────┘
+                       │ final result
+                       ▼
+┌─────────────────────────────────────────────────────┐
+│              Response Assembly                       │
+│  • ExplanationService (LLM or local)                │
+│  • Layer stack, mask collection                     │
+│  • Final image + steps + metadata + critique        │
+└─────────────────────────────────────────────────────┘
 ```
 
 **Key design decisions:**
 
-- **Model Manager singleton** — Only one heavy model in GPU at a time. Models are loaded lazily and unloaded before loading the next. This keeps VRAM usage under control.
-- **Context-passing between steps** — The pipeline carries a `context` dict. `segment` stores the SAM mask; `remove` / `replace_background` consume it to switch from blind img2img to mask-guided inpainting (`StableDiffusionInpaintPipeline`). Background replacement inverts the mask (inpaint background, keep foreground).
-- **LoRA adapter support** — Diffusion models automatically load LoRA adapter weights when `DIFFUSION_LORA_WEIGHTS` is set in `.env`. Adapters are applied via `diffusers.load_lora_weights()` after the base model loads.
-- **Modular services** — Each model (SAM, diffusion, ESRGAN) has its own service class. Adding a new model means creating a new service and registering a loader.
-- **Planner validation** — Gemini's output is validated against a strict schema before execution. Invalid operations are caught early.
+- **Non-destructive layers** — Every edit creates a layer. Layers support visibility, opacity, blend modes, grouping, and masks.
+- **Tool Registry** — 33 editing tools described with purpose, strengths/weaknesses, best/avoid cases, parameters, GPU cost, and latency. New tools added by registration.
+- **Image Understanding first** — The AI never edits blindly. Every edit starts with structured scene analysis.
+- **Model Manager singleton** — Only one heavy model in GPU at a time. Models are loaded lazily and unloaded before loading the next.
+- **Context-passing between steps** — The pipeline carries a `context` dict. `segment` stores the SAM mask; `remove` / `replace_background` consume it.
+- **LoRA adapter support** — Diffusion models auto-load LoRA weights from `DIFFUSION_LORA_WEIGHTS`.
+- **Planner validation** — LLM output is validated against a strict schema before execution.
+- **Critic loop** — Post-edit QA can trigger automatic corrective edits.
 
 ### Request Flow
 
 1. **Upload** → Image is validated, saved to `uploads/`, metadata returned
-2. **Edit** → Prompt + image filename sent to `/edit`
-3. **Gemini** → Prompt is sent to Gemini API with a system prompt asking for JSON output
-4. **Plan** → Gemini's JSON response is parsed and validated by the planner
-5. **Pipeline** → Each operation is executed in sequence:
-   - Current model is loaded (previous model is unloaded)
-   - Operation runs on the current image
-   - Result image is saved and base64-encoded
-   - Image is passed to the next operation
-6. **Response** → All step images + final image returned as JSON
+2. **Analyze** → (optional) Image Understanding Engine extracts scene metadata
+3. **Edit** → Prompt + image sent to `/edit`
+4. **Understand** → Engine analyzes image (scene, colors, faces, quality, lighting)
+5. **Plan** → Planning Agent reasons: prompt + metadata + tool registry → structured plan
+6. **Dispatch** → Tool Dispatcher routes each plan step to a tool
+7. **Execute** → Each operation runs sequentially, passing context (masks, images)
+8. **Critique** → Critic evaluates result for artifacts, halos, clipping, noise
+9. **Explain** → ExplanationService generates human-readable summary
+10. **Response** → Final image + steps + metadata + plan + critique + explanation
 
 ---
 
 ## Folder Structure
 
+```
 ```
 backend/
 ├── app/
@@ -514,43 +692,70 @@ backend/
 │   ├── api/
 │   │   ├── health.py              # GET /health
 │   │   ├── upload.py              # POST /upload
-│   │   └── edit.py                # POST /edit, GET /result/{id}, GET /history/{id}
+│   │   ├── edit.py                # POST /edit, GET /result/{id}, GET /history/{id}
+│   │   └── analyze.py             # POST /analyze — image understanding
+│   │
+│   ├── vision/                    # Image Understanding (NEW)
+│   │   ├── engine.py              # ImageUnderstandingEngine — scene, colors, faces, quality
+│   │   └── analyzers/             # Extensible analyzer modules
+│   │
+│   ├── planning/                  # Planning Agent (NEW)
+│   │   ├── planner.py             # PlanningAgent — LLM + metadata → structured plan
+│   │   └── strategy.py            # ExecutionPlan, PlanStep dataclasses
+│   │
+│   ├── dispatcher/                # Tool Dispatcher (NEW)
+│   │   └── dispatcher.py          # Maps plan steps → registered tools + legacy handlers
+│   │
+│   ├── tools/                     # Tool Registry (NEW)
+│   │   ├── base.py                # ToolSpec + EditingTool interfaces
+│   │   └── registry.py            # 33 tool specs: purpose, strengths, parameters, GPU cost
+│   │
+│   ├── critic/                    # Critic / QA (NEW)
+│   │   └── critic.py              # 7 quality checks: noise, halos, clipping, artifacts, etc.
+│   │
+│   ├── layers/                    # Non-destructive layer system (NEW)
+│   │   ├── layer.py               # Layer, LayerType, BlendMode
+│   │   └── stack.py               # LayerStack — add, remove, reorder, merge, blend
+│   │
+│   ├── masks/                     # First-class mask system (NEW)
+│   │   └── mask.py                # Mask, MaskType, MaskCollection
 │   │
 │   ├── schemas/
-│   │   ├── requests.py            # EditRequest, UploadResponse
-│   │   └── responses.py           # EditResponse, StepInfo, HealthResponse, etc.
+│   │   ├── requests.py            # EditRequest
+│   │   └── responses.py           # EditResponse, AnalyzeResponse, SceneMetadataResponse, etc.
 │   │
 │   ├── services/
 │   │   ├── gemini_service.py      # google-genai SDK wrapper, GeminiError exception
-│   │   ├── planner.py             # Validates Gemini JSON → structured plan
+│   │   ├── planner.py             # Legacy planner (validates Gemini JSON)
 │   │   ├── model_manager.py       # Singleton: lazy load, cache, GPU management
-│   │   ├── diffusion_service.py   # InstructPix2Pix / SD Inpaint wrappers + LoRA adapter loader
-│   │   ├── sam_service.py         # SAM segmentation (ViT-Base, runs on CPU)
+│   │   ├── diffusion_service.py   # InstructPix2Pix / SD Inpaint wrappers + LoRA
+│   │   ├── sam_service.py         # SAM segmentation (ViT-Base, CPU)
 │   │   ├── esrgan_service.py      # ESRGAN upscaling (with PIL fallback)
-│   │   ├── execution_log.py       # ExecutionLog dataclass (single source of truth for all pipeline ops)
-│   │   ├── pipeline.py            # Operation handler + pipeline executor (context-passing between steps)
+│   │   ├── execution_log.py       # ExecutionLog dataclass
+│   │   ├── pipeline.py            # Legacy pipeline executor
 │   │   └── explanation/           # Post-edit explanation service
-│   │       ├── __init__.py        # Exports: ExplanationService, ExplanationProvider, ExplanationResult
-│   │       ├── interfaces.py      # ABC + data classes (ChangeDescription, ExplanationResult)
+│   │       ├── __init__.py
+│   │       ├── interfaces.py      # ABC + data classes
 │   │       ├── service.py         # ExplanationService with fallback
-│   │       ├── prompts.py         # Isolated LLM prompt templates
-│   │       ├── gemini_provider.py # LLM-backed explanation generation
-│   │       └── local_provider.py  # Deterministic fallback (no LLM)
+│   │       ├── prompts.py         # LLM prompt templates
+│   │       ├── gemini_provider.py # LLM-backed explanation
+│   │       └── local_provider.py  # Deterministic fallback
 │   │
 │   └── utils/
 │       ├── image_utils.py         # load/save/convert/base64 helpers
-│       ├── gpu.py                 # CUDA detection, memory management (no-torch fallback)
-│       └── logger.py              # Structured logging with timestamps
+│       ├── gpu.py                 # CUDA detection, memory management
+│       └── logger.py              # Structured logging
 │
 ├── tests/                          # Pytest test suite
-│   ├── test_execution_log.py       # ExecutionLog filtering & serialization
-│   └── test_explanation.py         # LocalExplanationProvider reliability
-├── uploads/                       # Uploaded images
-├── outputs/                       # Edited images (organized by job_id)
-├── temp/                          # Temporary masks and intermediates
+│   ├── test_execution_log.py
+│   └── test_explanation.py
+├── uploads/
+├── outputs/
+├── temp/
 ├── requirements.txt
 ├── .env.example
 └── README.md
+```
 ```
 
 ---
@@ -691,41 +896,71 @@ The test suite covers:
 
 ## Extending the Backend
 
-### Add a new operation
+### Register a new editing tool
+
+Tools are defined by a `ToolSpec` and an `EditingTool` implementation:
 
 ```python
-# In app/services/pipeline.py
+from app.tools.base import EditingTool, ToolSpec
+from app.tools.registry import ToolRegistry
+from PIL import Image
 
-class OperationHandler:
-    def handle_new_effect(
-        self,
-        image: Image.Image,
-        params: Dict[str, Any],
-        context: Optional[Dict[str, Any]] = None,
-    ):
-        # Read artifacts from context (e.g. SAM mask from prior segment step)
-        mask = context.get("mask") if context else None
-        # Your implementation
+class VignetteTool(EditingTool):
+    spec = ToolSpec(
+        name="vignette",
+        purpose="Darken or lighten image corners",
+        strengths=["Adds focus", "Cinematic feel"],
+        weaknesses=["Can look cliche"],
+        best_for=["Portraits", "Cinematic look"],
+        avoid_for=["Already dark images"],
+        required_inputs=["image"],
+        outputs=["edited_image"],
+        compatible_tools=["color_grading", "exposure"],
+        parameters={"strength": {"type": "float", "range": [-100, 100], "default": 30}},
+        gpu_cost="none",
+        latency="instant",
+    )
+
+    async def execute(self, image, params, context=None):
+        # Implementation
         return result_image, {}
 
 # Register it
+ToolRegistry.register_tool("vignette", VignetteTool())
+```
+
+The tool is now available to the Planning Agent and Tool Dispatcher.
+
+### Add a new operation (legacy path)
+
+```python
+# In app/services/pipeline.py
+class OperationHandler:
+    def handle_new_effect(self, image, params, context=None):
+        mask = context.get("mask") if context else None
+        return result_image, {}
+
 self._operation_map["new_effect"] = self.handler.handle_new_effect
+```
+
+### Add a new vision analyzer
+
+```python
+# In app/vision/analyzers/
+class CustomAnalyzer:
+    def analyze(self, image: Image.Image) -> dict:
+        return {"custom_metric": 42}
+
+# Use in engine.py:
+# metadata.custom_field = CustomAnalyzer().analyze(image)
 ```
 
 ### Add a new model
 
-1. Create `app/services/new_model_service.py` with a class that has `load_model()` and processing methods
+1. Create `app/services/new_model_service.py` with `load_model()` and processing methods
 2. Add a `load_new_model()` method to `ModelManager` in `model_manager.py`
 3. Register the model type in `ModelType` enum
-4. Use it from a pipeline handler
-
-### Swap a model
-
-Change the model ID in the service class constant, or set `MODEL_PATHS` in `.env`:
-
-```env
-MODEL_PATHS='{"sam": "my-org/my-sam","diffusion": "my-org/my-diffusion"}'
-```
+4. Use it from a pipeline handler or tool executor
 
 ---
 
@@ -769,7 +1004,8 @@ Consider adding:
 - **google-genai** for Gemini API integration
 - **PyTorch** for model inference
 - **HuggingFace Transformers** (SAM)
-- **HuggingFace Diffusers** (InstructPix2Pix)
-- **Pillow / OpenCV** for image processing
+- **HuggingFace Diffusers** (InstructPix2Pix, Stable Diffusion Inpainting)
+- **Pillow / OpenCV / numpy** for image processing and computer vision
 - **Pydantic v2** for data validation
 - **httpx** for async HTTP
+- **rembg** for AI background removal (u2net)

@@ -17,7 +17,7 @@ SAM_MODEL_ID = "facebook/sam-vit-base"
 
 class SAMService:
     def __init__(self, device: Any) -> None:
-        self.device = torch.device("cpu")
+        self.device = device if isinstance(device, torch.device) else torch.device(device)
         self.model: Optional[Any] = None
         self.processor: Optional[Any] = None
 
@@ -26,14 +26,16 @@ class SAMService:
 
         clear_gpu()
         model_id = model_path or SAM_MODEL_ID
-        logger.info("Loading SAM model: %s (on CPU)", model_id)
+        is_cuda = getattr(self.device, "type", "") == "cuda"
+        dtype = torch.float16 if is_cuda else torch.float32
+        logger.info("Loading SAM model: %s (on %s, %s)", model_id, self.device, dtype)
 
         self.processor = SamProcessor.from_pretrained(model_id)
-        self.model = SamModel.from_pretrained(model_id, torch_dtype=torch.float32)
+        self.model = SamModel.from_pretrained(model_id, torch_dtype=dtype)
         self.model = self.model.to(self.device)
         self.model.eval()
 
-        logger.info("SAM model loaded on CPU")
+        logger.info("SAM model loaded on %s", self.device)
 
     @torch.no_grad()
     def segment_object(
@@ -56,7 +58,12 @@ class SAMService:
             image,
             input_boxes=input_boxes,
             return_tensors="pt",
-        ).to(self.device)
+        )
+        inputs = {k: v.to(self.device) for k, v in inputs.items()}
+        if hasattr(self.model, "dtype") and self.model.dtype in (torch.float16, torch.bfloat16):
+            for k in ("pixel_values",):
+                if k in inputs:
+                    inputs[k] = inputs[k].to(dtype=self.model.dtype)
 
         outputs = self.model(**inputs)
         masks = self.processor.image_processor.post_process_masks(
