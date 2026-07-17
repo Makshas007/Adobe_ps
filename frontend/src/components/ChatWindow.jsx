@@ -2,6 +2,48 @@ import { useState, useEffect, useCallback } from 'react'
 import {image} from '../utilities/indexedDB.js'
 import { blobToDataURL } from '../utilities/type.js'
 
+function ExplanationSection({ explanation, executionLog }) {
+  const [showLog, setShowLog] = useState(false)
+
+  if (!explanation) return null
+
+  return (
+    <div className="explanation-section">
+      <div className="explanation-plain">
+        {explanation.plain_english}
+      </div>
+      <div className="explanation-technical">
+        <span className="explanation-label">Technical Details</span>
+        <pre className="explanation-tech-text">{explanation.technical_summary}</pre>
+      </div>
+      <div className="explanation-log-toggle">
+        <button
+          className="explanation-log-btn"
+          onClick={() => setShowLog(!showLog)}
+        >
+          {showLog ? 'Hide' : 'Show'} Execution Details {showLog ? '▲' : '▼'}
+        </button>
+        {showLog && executionLog && executionLog.length > 0 && (
+          <div className="explanation-log">
+            {executionLog.map((entry, i) => (
+              <div key={i} className={`explanation-log-entry log-${entry.status}`}>
+                <div className="log-entry-header">
+                  <span className="log-entry-op">{entry.operation}</span>
+                  <span className={`log-entry-status status-${entry.status}`}>{entry.status}</span>
+                  <span className="log-entry-duration">{entry.duration.toFixed(0)}ms</span>
+                </div>
+                {entry.target && <div className="log-entry-detail">Target: {entry.target}</div>}
+                {entry.model && <div className="log-entry-detail">Model: {entry.model}</div>}
+                {entry.reason && <div className="log-entry-detail">Reason: {entry.reason}</div>}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export default function ChatWindow({ imageHistoryNode, head, onEditComplete, canvasRef }) {
   const [messages, setMessages] = useState([
     { role: 'assistant', text: 'Hello! I can help you edit this image. Try asking me to crop, resize, or apply a filter.' },
@@ -142,7 +184,12 @@ export default function ChatWindow({ imageHistoryNode, head, onEditComplete, can
       )
       onEditComplete(dataUri, label, localStorage.getItem(head.id) || 'Untitled_Img.jpg')
       setMessages((prev) => {
-        const updated = [...prev, { role: 'assistant', text: `Applied: ${prompt}` }]
+        const updated = [...prev, {
+          role: 'assistant',
+          text: `Applied: ${prompt}`,
+          explanation: data.explanation,
+          executionLog: data.execution_log,
+        }]
         saveChats(updated)
         return updated
       })
@@ -170,7 +217,13 @@ export default function ChatWindow({ imageHistoryNode, head, onEditComplete, can
       <div className="chat-messages">
         {messages.map((msg, i) => (
           <div key={i} className={`chat-message ${msg.role}`}>
-            {msg.text}
+            <div>{msg.text}</div>
+            {msg.explanation && (
+              <ExplanationSection
+                explanation={msg.explanation}
+                executionLog={msg.executionLog}
+              />
+            )}
           </div>
         ))}
       </div>

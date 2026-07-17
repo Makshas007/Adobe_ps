@@ -12,6 +12,31 @@ class StepInfo(BaseModel):
     details: Optional[Dict[str, Any]] = None
 
 
+class ExecutionLogEntryResponse(BaseModel):
+    operation: str
+    target: str = ""
+    model: str = ""
+    input: str = ""
+    output: str = ""
+    parameters: Dict[str, Any] = Field(default_factory=dict)
+    status: str = "success"
+    reason: str = ""
+    duration: float = 0.0
+
+
+class ChangeDescriptionResponse(BaseModel):
+    operation: str = ""
+    target: str = ""
+    description: str = ""
+    technical: str = ""
+
+
+class ExplanationResponse(BaseModel):
+    plain_english: str = ""
+    technical_summary: str = ""
+    changes: List[ChangeDescriptionResponse] = Field(default_factory=list)
+
+
 class EditResponse(BaseModel):
     job_id: str
     status: str
@@ -19,6 +44,8 @@ class EditResponse(BaseModel):
     final_image: str = Field(..., description="Base64-encoded final image")
     total_duration_ms: float = 0.0
     error: Optional[str] = None
+    execution_log: List[ExecutionLogEntryResponse] = Field(default_factory=list)
+    explanation: Optional[ExplanationResponse] = None
 
 
 class JobStatusResponse(BaseModel):

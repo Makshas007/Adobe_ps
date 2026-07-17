@@ -4,14 +4,23 @@ import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.config import Settings
-from app.dependencies import get_planner, get_pipeline_executor, get_settings
+from app.dependencies import get_explanation_service, get_planner, get_pipeline_executor, get_settings
 from app.schemas.requests import EditRequest
-from app.schemas.responses import EditResponse, JobStatusResponse, StepInfo
+from app.schemas.responses import (
+    ChangeDescriptionResponse,
+    EditResponse,
+    ExecutionLogEntryResponse,
+    ExplanationResponse,
+    JobStatusResponse,
+    StepInfo,
+)
+from app.services.execution_log import ExecutionLog
+from app.services.explanation import ExplanationService
 from app.services.gemini_service import GeminiError
 from app.services.planner import Planner
 from app.services.pipeline import PipelineExecutor
@@ -51,6 +60,7 @@ async def edit_image(
     request: EditRequest,
     planner: Planner = Depends(get_planner),
     pipeline: PipelineExecutor = Depends(get_pipeline_executor),
+    explanation_service: ExplanationService = Depends(get_explanation_service),
     settings: Settings = Depends(get_settings),
 ) -> EditResponse:
     job_id = uuid.uuid4().hex[:12]
@@ -105,6 +115,8 @@ async def edit_image(
         "created_at": datetime.now(timezone.utc).isoformat(),
         "steps": [],
         "final_image": "",
+        "execution_log": [],
+        "explanation": None,
         "error": None,
     }
 
@@ -125,7 +137,7 @@ async def edit_image(
 
     try:
         total_start = time.monotonic()
-        steps_data = await pipeline.execute(plan, input_image, job_id)
+        steps_data, execution_log = await pipeline.execute(plan, input_image, job_id)
         total_duration = (time.monotonic() - total_start) * 1000
 
         steps = [
@@ -140,12 +152,39 @@ async def edit_image(
 
         final_base64 = steps[-1].image if steps else ""
 
+        execution_log_response = [
+            ExecutionLogEntryResponse(**entry.to_dict())
+            for entry in execution_log.entries
+        ]
+
+        explanation_result = await explanation_service.generate(
+            prompt=request.prompt,
+            execution_log=[entry.to_dict() for entry in execution_log.entries],
+            metadata={"job_id": job_id, "total_duration_ms": total_duration},
+        )
+
+        explanation = ExplanationResponse(
+            plain_english=explanation_result.plain_english,
+            technical_summary=explanation_result.technical_summary,
+            changes=[
+                ChangeDescriptionResponse(
+                    operation=c.operation,
+                    target=c.target,
+                    description=c.description,
+                    technical=c.technical,
+                )
+                for c in explanation_result.changes
+            ],
+        )
+
         response = EditResponse(
             job_id=job_id,
             status="completed",
             steps=steps,
             final_image=final_base64,
             total_duration_ms=round(total_duration, 2),
+            execution_log=execution_log_response,
+            explanation=explanation,
         )
 
         _jobs[job_id].update({
@@ -153,6 +192,8 @@ async def edit_image(
             "steps": [s.model_dump() for s in steps],
             "final_image": final_base64,
             "total_duration_ms": round(total_duration, 2),
+            "execution_log": [entry.to_dict() for entry in execution_log.entries],
+            "explanation": explanation.model_dump(),
         })
 
         logger.info(
@@ -201,6 +242,11 @@ async def get_result(job_id: str) -> EditResponse:
         )
 
     steps = [StepInfo(**s) for s in job.get("steps", [])]
+    raw_log = job.get("execution_log", [])
+    execution_log = [ExecutionLogEntryResponse(**e) for e in raw_log] if raw_log else []
+    raw_explanation = job.get("explanation")
+    explanation = ExplanationResponse(**raw_explanation) if raw_explanation else None
+
     return EditResponse(
         job_id=job["job_id"],
         status=job["status"],
@@ -208,6 +254,8 @@ async def get_result(job_id: str) -> EditResponse:
         final_image=job.get("final_image", ""),
         total_duration_ms=job.get("total_duration_ms", 0.0),
         error=job.get("error"),
+        execution_log=execution_log,
+        explanation=explanation,
     )
 
 
