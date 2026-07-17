@@ -119,6 +119,7 @@ function FlowCanvas({ miniature, treeData, currNode, setNode }) {
 
       return nds.map((node) => ({
         ...node,
+        data: { ...node.data, currId: currNode?.id },
         selected: node.id === currNode?.id,
       }))
     })
