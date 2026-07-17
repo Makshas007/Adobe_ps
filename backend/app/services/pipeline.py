@@ -8,6 +8,7 @@ import numpy as np
 from PIL import Image
 
 from app.config import settings
+from app.services.execution_log import ExecutionLog, ExecutionLogEntry, LogStatus
 from app.services.model_manager import ModelManager
 from app.utils.image_utils import ensure_rgb, image_to_base64, save_image
 from app.utils.logger import get_logger
@@ -347,22 +348,67 @@ class PipelineExecutor:
         plan: List[Dict[str, Any]],
         input_image: Image.Image,
         job_id: str,
-    ) -> List[Dict[str, Any]]:
+    ) -> Tuple[List[Dict[str, Any]], ExecutionLog]:
         import asyncio
         async with self._lock:
             return await asyncio.to_thread(self._execute_sync, plan, input_image, job_id)
+
+    def _get_model_name(self, op_name: str, params: Dict[str, Any]) -> str:
+        if op_name == "segment":
+            return "sam-vit-base"
+        elif op_name == "remove":
+            if params.get("mask") is not None:
+                return "sd-inpaint"
+            return "instruct-pix2pix"
+        elif op_name == "replace_background":
+            if params.get("mask") is not None:
+                return "sd-inpaint"
+            return "instruct-pix2pix"
+        elif op_name in ("style_transfer", "change_style"):
+            return "instruct-pix2pix"
+        elif op_name == "upscale":
+            return "esrgan"
+        elif op_name == "remove_background":
+            return "rembg"
+        return ""
+
+    def _build_log_entry(
+        self,
+        op_name: str,
+        params: Dict[str, Any],
+        status: LogStatus,
+        duration: float,
+        reason: str = "",
+        model: str = "",
+    ) -> ExecutionLogEntry:
+        target = ""
+        if op_name == "segment":
+            target = params.get("target", "")
+        elif op_name in ("replace_background", "remove_background"):
+            target = "background"
+
+        return ExecutionLogEntry(
+            operation=op_name,
+            target=target,
+            model=model or self._get_model_name(op_name, params),
+            parameters=params,
+            status=status,
+            reason=reason,
+            duration=duration,
+        )
 
     def _execute_sync(
         self,
         plan: List[Dict[str, Any]],
         input_image: Image.Image,
         job_id: str,
-    ) -> List[Dict[str, Any]]:
+    ) -> Tuple[List[Dict[str, Any]], ExecutionLog]:
         logger.info("Pipeline executing plan with %d steps for job %s", len(plan), job_id)
         current_image = input_image
         if current_image.mode != "RGBA":
             current_image = ensure_rgb(input_image)
         steps: List[Dict[str, Any]] = []
+        execution_log = ExecutionLog()
         context: Dict[str, Any] = {}
 
         for step_index, operation in enumerate(plan):
@@ -399,6 +445,14 @@ class PipelineExecutor:
                 }
                 steps.append(step_entry)
 
+                log_entry = self._build_log_entry(
+                    op_name=op_name,
+                    params=params,
+                    status=LogStatus.SUCCESS,
+                    duration=step_duration,
+                )
+                execution_log.append(log_entry)
+
                 logger.info(
                     "Step %d/%d complete: %s (%.0f ms)",
                     step_index + 1, len(plan), op_name, step_duration,
@@ -410,6 +464,7 @@ class PipelineExecutor:
                 gc.collect()
 
             except Exception as exc:
+                step_duration = (time.monotonic() - step_start) * 1000
                 logger.error(
                     "Pipeline step %d (%s) failed: %s",
                     step_index + 1, op_name, exc,
@@ -417,10 +472,20 @@ class PipelineExecutor:
                 error_step = {
                     "operation": op_name,
                     "image": image_to_base64(current_image),
-                    "duration_ms": round((time.monotonic() - step_start) * 1000, 2),
+                    "duration_ms": round(step_duration, 2),
                     "error": str(exc),
                 }
                 steps.append(error_step)
+
+                log_entry = self._build_log_entry(
+                    op_name=op_name,
+                    params=params,
+                    status=LogStatus.FAILED,
+                    duration=step_duration,
+                    reason=str(exc),
+                )
+                execution_log.append(log_entry)
+
                 self.model_manager.unload_current()
                 gc.collect()
                 raise RuntimeError(
@@ -433,4 +498,4 @@ class PipelineExecutor:
             "Pipeline complete for job %s: %d steps executed",
             job_id, len(steps),
         )
-        return steps
+        return steps, execution_log
