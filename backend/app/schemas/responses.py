@@ -5,6 +5,14 @@ from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
 
 
+class LayerInfo(BaseModel):
+    id: str = Field(..., description="Unique layer identifier")
+    name: str = Field(..., description="Display name")
+    image: str = Field(..., description="Base64-encoded image data")
+    layer_type: str = Field("composite", description="foreground, background, mask, composite")
+    visible: bool = Field(True, description="Whether the layer is visible")
+
+
 class StepInfo(BaseModel):
     operation: str = Field(..., description="The operation performed")
     image: str = Field(..., description="Base64-encoded intermediate image")

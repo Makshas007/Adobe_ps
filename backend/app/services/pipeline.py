@@ -112,7 +112,19 @@ class OperationHandler:
         context: Optional[Dict[str, Any]] = None,
     ) -> Tuple[Image.Image, Dict[str, Any]]:
         logger.info("Pipeline step: replace_background with '%s'", params.get("instruction", ""))
+        import io
+        import base64 as b64_mod
         mask = context.get("mask") if context else None
+        from app.utils.image_utils import image_to_base64
+
+        if mask is None:
+            logger.info("No mask in context, segmenting main subject for layer decomposition")
+            _, mask_details = self.handle_segment(image, {"target": "main subject", "save_mask": False}, context)
+            mask_raw = mask_details.get("mask_image")
+            if mask_raw and isinstance(mask_raw, str):
+                mask = Image.open(io.BytesIO(b64_mod.b64decode(mask_raw)))
+            else:
+                mask = mask_raw
 
         process_params: Dict[str, Any] = {
             "instruction": params.get("instruction", "change background"),
@@ -123,8 +135,8 @@ class OperationHandler:
         }
 
         if mask is not None:
-            logger.info("Using SAM mask for guided background replacement")
-            # Invert: inpaint background (unmasked area), keep foreground (masked area)
+            logger.info("Using mask for guided background replacement")
+            import numpy as np
             inv_mask = Image.fromarray(
                 255 - np.array(mask.convert("L")), mode="L"
             )
@@ -135,7 +147,53 @@ class OperationHandler:
             service = self.model_manager.load_diffusion()
 
         result = service.process("replace_background", image, process_params)
-        return result, {}
+        if result.size != image.size:
+            result = result.resize(image.size, Image.Resampling.LANCZOS)
+
+        result_b64 = image_to_base64(result)
+        layers = []
+
+        if mask is not None:
+            mask_l = mask.convert("L")
+            if mask_l.size != image.size:
+                mask_l = mask_l.resize(image.size, Image.Resampling.LANCZOS)
+            orig_rgba = image.convert("RGBA")
+            fg_r, fg_g, fg_b, _ = orig_rgba.split()
+            fg_layer = Image.merge("RGBA", (fg_r, fg_g, fg_b, mask_l))
+            fg_b64 = image_to_base64(fg_layer)
+
+            result_rgba = result.convert("RGBA")
+            if result_rgba.size != image.size:
+                result_rgba = result_rgba.resize(image.size, Image.Resampling.LANCZOS)
+            bg_r_arr = np.array(result_rgba.split()[0], dtype=np.float32)
+            bg_g_arr = np.array(result_rgba.split()[1], dtype=np.float32)
+            bg_b_arr = np.array(result_rgba.split()[2], dtype=np.float32)
+            orig_r_arr = np.array(orig_rgba.split()[0], dtype=np.float32)
+            orig_g_arr = np.array(orig_rgba.split()[1], dtype=np.float32)
+            orig_b_arr = np.array(orig_rgba.split()[2], dtype=np.float32)
+            msk_arr = np.array(mask_l, dtype=np.float32) / 255.0
+            eps = 1e-8
+            inv_msk_arr = 1.0 - msk_arr
+            bg_r = np.clip((bg_r_arr - orig_r_arr * msk_arr) / (inv_msk_arr + eps), 0, 255).astype(np.uint8)
+            bg_g = np.clip((bg_g_arr - orig_g_arr * msk_arr) / (inv_msk_arr + eps), 0, 255).astype(np.uint8)
+            bg_b = np.clip((bg_b_arr - orig_b_arr * msk_arr) / (inv_msk_arr + eps), 0, 255).astype(np.uint8)
+            inv_msk = Image.fromarray(np.clip(inv_msk_arr * 255, 0, 255).astype(np.uint8), mode="L")
+            bg_only = Image.merge("RGBA", (
+                Image.fromarray(bg_r, mode="L"),
+                Image.fromarray(bg_g, mode="L"),
+                Image.fromarray(bg_b, mode="L"),
+                inv_msk,
+            ))
+            bg_b64 = image_to_base64(bg_only)
+
+            layers = [
+                {"id": "foreground", "name": "Subject", "image": fg_b64, "layer_type": "foreground", "visible": True},
+                {"id": "background", "name": "New Background", "image": bg_b64, "layer_type": "background", "visible": True},
+            ]
+        else:
+            layers = [{"id": "result", "name": "Result", "image": result_b64, "layer_type": "composite", "visible": True}]
+
+        return result, {"layers": layers}
 
     def _fallback_remove_bg(self, image: Image.Image, context: Optional[Dict[str, Any]] = None) -> Image.Image:
         logger.warning("rembg failed. Falling back to SAM-based background removal.")
@@ -203,7 +261,9 @@ class OperationHandler:
                 if "Half" in err_str or "float" in err_str.lower() or "dtype" in err_str.lower():
                     logger.warning("rembg dtype error, falling back to SAM: %s", err_str)
                     result_rgba = self._fallback_remove_bg(image, context)
-                    return result_rgba, {}
+                    from app.utils.image_utils import image_to_base64 as _i2b
+                    fb_b64 = _i2b(result_rgba)
+                    return result_rgba, {"layers": [{"id": "subject", "name": "Subject", "image": fb_b64, "layer_type": "foreground", "visible": True}]}
                 raise
 
             if result.size != image.size:
@@ -241,10 +301,18 @@ class OperationHandler:
             r_orig, g_orig, b_orig, _ = orig_rgba.split()
             result = Image.merge("RGBA", (r_orig, g_orig, b_orig, alpha_img))
 
-            return result, {}
+            from app.utils.image_utils import image_to_base64
+            subject_b64 = image_to_base64(result)
+            layers = [{
+                "id": "subject",
+                "name": "Subject",
+                "image": subject_b64,
+                "layer_type": "foreground",
+                "visible": True,
+            }]
+            return result, {"layers": layers}
         except ImportError:
             logger.warning("rembg is not installed. Falling back to SAM (which has aliased edges).")
-            # Make sure we have a mask, otherwise just segment the whole image's main subject
             if context is None or "mask" not in context:
                 img_temp, mask_details = self.handle_segment(image, {"target": "main subject"}, context)
                 if context is None:
@@ -256,14 +324,12 @@ class OperationHandler:
             if mask is None:
                 return image, {}
 
-            # Convert image to RGBA
+            from app.utils.image_utils import image_to_base64 as _i2b
             image_rgba = image.convert("RGBA")
-            # Ensure mask is L mode and same size
             mask_l = mask.convert("L").resize(image_rgba.size)
-
-            # Apply mask to alpha channel
             image_rgba.putalpha(mask_l)
-            return image_rgba, {}
+            rgba_b64 = _i2b(image_rgba)
+            return image_rgba, {"layers": [{"id": "subject", "name": "Subject", "image": rgba_b64, "layer_type": "foreground", "visible": True}]}
         
     def handle_style_transfer(
         self,

@@ -44,7 +44,19 @@ function ExplanationSection({ explanation, executionLog }) {
   )
 }
 
-export default function ChatWindow({ imageHistoryNode, head, onEditComplete, canvasRef }) {
+const LAYER_TYPE_LABELS = {
+  foreground: 'Foreground',
+  background: 'Background',
+  composite: 'Composite',
+  mask: 'Mask',
+}
+
+function getSelectedLayerInfo(layers, selectedId) {
+  if (!layers || !selectedId) return null
+  return layers.find(l => l.id === selectedId) || null
+}
+
+export default function ChatWindow({ imageHistoryNode, head, onEditComplete, canvasRef, layers, selectedLayerId, onSelectLayer }) {
   const [messages, setMessages] = useState([
     { role: 'assistant', text: 'Hello! I can help you edit this image. Try asking me to crop, resize, or apply a filter.' },
   ])
@@ -156,10 +168,17 @@ export default function ChatWindow({ imageHistoryNode, head, onEditComplete, can
     setInput('')
     
     try {
+      let enhancedPrompt = prompt
+      const selectedLayer = getSelectedLayerInfo(layers, selectedLayerId)
+      if (selectedLayer) {
+        const layerType = LAYER_TYPE_LABELS[selectedLayer.layer_type] || selectedLayer.layer_type
+        enhancedPrompt = `[Editing "${selectedLayer.name}" (${layerType}) layer] ${prompt}`
+      }
+
       const res = await fetch('/edit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt, image: canvasURI || await img_by_id(imageHistoryNode.imageId) }),
+        body: JSON.stringify({ prompt: enhancedPrompt, image: canvasURI || await img_by_id(imageHistoryNode.imageId) }),
       })
       if (!res.ok) {
         let errorMsg = 'Edit failed. Please try again.'
@@ -211,9 +230,26 @@ export default function ChatWindow({ imageHistoryNode, head, onEditComplete, can
     else return "Upload an image first";
   }
 
+  const selectedLayer = getSelectedLayerInfo(layers, selectedLayerId)
+
   return (
     <aside className="chat-window">
       <h2>Chat</h2>
+      {selectedLayer && (
+        <div
+          className="chat-layer-indicator"
+          onClick={() => onSelectLayer && onSelectLayer(null)}
+          title="Click to deselect"
+          style={{ cursor: 'pointer' }}
+        >
+          <span>Editing: </span>
+          <strong>{selectedLayer.name}</strong>
+          <span className="chat-layer-type">
+            ({LAYER_TYPE_LABELS[selectedLayer.layer_type] || selectedLayer.layer_type})
+          </span>
+          <span className="chat-layer-clear">✕</span>
+        </div>
+      )}
       <div className="chat-messages">
         {messages.map((msg, i) => (
           <div key={i} className={`chat-message ${msg.role}`}>
