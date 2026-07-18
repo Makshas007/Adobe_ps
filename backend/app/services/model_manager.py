@@ -19,6 +19,8 @@ class ModelType(Enum):
     SAM = "sam"
     DIFFUSION = "diffusion"
     ESRGAN = "esrgan"
+    REMOVAL = "removal"
+    PERSON_SEGMENTATION = "person_segmentation"
 
 
 class ModelManager:
@@ -128,6 +130,26 @@ class ModelManager:
 
         return self._ensure_loaded(ModelType.ESRGAN, _load)
 
+    def load_removal(self, model_path: str = "") -> Any:
+        from app.services.removal_service import RemovalService
+
+        def _load() -> Any:
+            service = RemovalService(device=self.device)
+            service.load_model(model_path or "")
+            return service
+
+        return self._ensure_loaded(ModelType.REMOVAL, _load)
+
+    def load_person_segmentation(self, model_path: str = "") -> Any:
+        from app.services.person_segmentation_service import PersonSegmentationService
+
+        def _load() -> Any:
+            service = PersonSegmentationService(device=self.device)
+            service.load_model(model_path or "")
+            return service
+
+        return self._ensure_loaded(ModelType.PERSON_SEGMENTATION, _load)
+
     def unload_current(self) -> None:
         self._unload_current()
 
@@ -141,6 +163,10 @@ class ModelManager:
             return self._loaded_model.process(operation, image, params or {})
         elif self._loaded_type == ModelType.ESRGAN:
             return self._loaded_model.upscale(image)
+        elif self._loaded_type == ModelType.REMOVAL:
+            return self._loaded_model.process(operation, image, params or {})
+        elif self._loaded_type == ModelType.PERSON_SEGMENTATION:
+            return self._loaded_model.segment_person(image)
         else:
             raise RuntimeError(f"Unknown loaded model type: {self._loaded_type}")
 

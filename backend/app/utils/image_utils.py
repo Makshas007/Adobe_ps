@@ -20,8 +20,8 @@ SUPPORTED_FORMATS = frozenset({".png", ".jpg", ".jpeg", ".webp", ".bmp"})
 def load_image(path: Path) -> Image.Image:
     if not path.exists():
         raise FileNotFoundError(f"Image not found: {path}")
-    image = Image.open(path).convert("RGB")
-    logger.info("Loaded image: %s (%s)", path, image.size)
+    image = Image.open(path)
+    logger.info("Loaded image: %s (%s)", image.size, path)
     return image
 
 
@@ -47,7 +47,7 @@ def image_to_base64(image: Image.Image, fmt: str = "PNG") -> str:
 
 def base64_to_image(data: str) -> Image.Image:
     buffer = io.BytesIO(base64.b64decode(data))
-    return Image.open(buffer).convert("RGB")
+    return Image.open(buffer)
 
 
 def data_url_to_image(data_url: str) -> Image.Image:

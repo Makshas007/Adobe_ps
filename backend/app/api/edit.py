@@ -104,8 +104,6 @@ async def edit_image(
                     "suggestion": "Re-upload the image via POST /upload",
                 },
             ) from exc
-    input_image = ensure_rgb(input_image)
-
     logger.info("Job %s: Starting edit with prompt: %.80s", job_id, request.prompt)
 
     engine = get_vision_engine()

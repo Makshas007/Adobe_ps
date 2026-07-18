@@ -19,3 +19,6 @@ google-genai>=1.0.0
 # accelerate>=0.25.0
 # sentencepiece>=0.1.99
 # protobuf>=3.20.3
+
+# Specialized removal model (LaMa inpainting for object/person removal):
+# simple-lama-inpainting>=0.1.2

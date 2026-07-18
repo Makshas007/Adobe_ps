@@ -77,6 +77,27 @@ class OperationHandler:
 
         return result_image, details
 
+    @staticmethod
+    def _is_person_removal(instruction: str, image: Image.Image) -> bool:
+        """Detect if the removal target is a person based on instruction and image.
+
+        Checks the instruction text for person-related keywords first, then
+        falls back to face detection via Haar cascade.
+        """
+        person_keywords = [
+            "person", "people", "human", "man", "woman", "child", "children",
+            "guy", "girl", "boy", "pedestrian", "crowd", "someone", "somebody",
+            "portrait", "face", "head", "tourist", "visitor", "passenger",
+            "worker", "student", "player", "actor", "model", "subject",
+        ]
+        instruction_lower = instruction.lower()
+        if any(kw in instruction_lower for kw in person_keywords):
+            return True
+        try:
+            return OperationHandler._is_human_image(image)
+        except Exception:
+            return False
+
     def handle_remove(
         self,
         image: Image.Image,
@@ -87,6 +108,35 @@ class OperationHandler:
         mask = context.get("mask") if context else None
         prompt = params.get("instruction", "remove the main subject, clean background")
 
+        is_person = self._is_person_removal(prompt, image)
+
+        if is_person:
+            logger.info("Person removal detected - using specialized person mask")
+            try:
+                person_service = self.model_manager.load_person_segmentation()
+                person_mask = person_service.segment_person(image)
+                if context is not None:
+                    context["mask"] = person_mask
+                mask = person_mask
+                logger.info("Person mask generated via u2net_human_seg")
+            except Exception as exc:
+                logger.warning(
+                    "Person segmentation failed, using existing mask: %s", exc
+                )
+
+        if mask is not None:
+            try:
+                logger.info("Using LaMa specialized inpainting for removal")
+                service = self.model_manager.load_removal()
+                process_params: Dict[str, Any] = {"mask": mask}
+                result = service.process("remove", image, process_params)
+                return result, {}
+            except Exception as exc:
+                logger.warning(
+                    "LaMa removal failed, falling back to diffusion inpainting: %s",
+                    exc,
+                )
+
         process_params: Dict[str, Any] = {
             "prompt": f"empty background, {prompt}",
             "negative_prompt": "object, subject, person, thing, detail",
@@ -96,10 +146,11 @@ class OperationHandler:
         }
 
         if mask is not None:
-            logger.info("Using SAM mask for guided inpainting removal")
+            logger.info("Fallback: using SAM mask for guided inpainting removal")
             process_params["mask"] = mask
             service = self.model_manager.load_diffusion(model_type="inpaint")
         else:
+            logger.info("Fallback: using diffusion-based removal without mask")
             service = self.model_manager.load_diffusion()
 
         result = service.process("remove", image, process_params)
@@ -352,7 +403,9 @@ class OperationHandler:
         alpha = None
         if image.mode == "RGBA":
             alpha = image.split()[3]
-            image = image.convert("RGB")
+            background = Image.new("RGB", image.size, (255, 255, 255))
+            background.paste(image.convert("RGB"), mask=alpha)
+            image = background
         orig_size = image.size
 
         logger.info("Pipeline step: style_transfer with '%s'", params.get("instruction", ""))
@@ -426,9 +479,7 @@ class PipelineExecutor:
         if op_name == "segment":
             return "sam-vit-base"
         elif op_name == "remove":
-            if params.get("mask") is not None:
-                return "sd-inpaint"
-            return "instruct-pix2pix"
+            return "lama-inpaint"
         elif op_name == "replace_background":
             if params.get("mask") is not None:
                 return "sd-inpaint"
