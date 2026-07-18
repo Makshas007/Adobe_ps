@@ -177,36 +177,8 @@ export default function ToolOptions({
                 <span className="tool-option-value">{Math.round((selectedObject.opacity ?? 1) * 100)}%</span>
               </div>
             </div>
-<<<<<<< Updated upstream
-             {selectedObject.type === 'i-text' && (
-               <>
-               <div className="tool-sidebar-field">
-                 <label>Font Family</label>
-                 <select
-                   className="tool-sidebar-select"
-                   value={selectedObject.fontFamily || 'Inter, sans-serif'}
-                   onChange={(e) => onUpdateSelectedObject({ fontFamily: e.target.value })}
-                 >
-                   <option value="Inter, sans-serif">Inter</option>
-                   <option value="Arial, sans-serif">Arial</option>
-                   <option value="Roboto, sans-serif">Roboto</option>
-                   <option value="Georgia, serif">Georgia</option>
-                   <option value="Times New Roman, serif">Times New Roman</option>
-                   <option value="Courier New, monospace">Courier New</option>
-                   <option value="Impact, sans-serif">Impact</option>
-                 </select>
-               </div>
-               <div className="tool-sidebar-field">
-                 <label>Font Size</label>
-=======
-<<<<<<< Updated upstream
             {selectedObject.type === 'i-text' && (
               <>
-              <div className="tool-sidebar-field">
-                <label>Font Size</label>
-=======
-             {selectedObject.type === 'i-text' && (
-               <>
                 <div className="tool-sidebar-field">
                   <label>Font Family</label>
                   <select
@@ -215,10 +187,14 @@ export default function ToolOptions({
                     onChange={(e) => onUpdateSelectedObject({ fontFamily: e.target.value })}
                     style={{ fontFamily: (selectedObject.fontFamily || 'Inter, sans-serif').split(',')[0].replace(/['"]/g, '') }}
                   >
-                    {FONT_CATEGORIES.map(cat => (
+                    {FONT_CATEGORIES.map((cat) => (
                       <optgroup key={cat.name} label={cat.name}>
-                        {cat.fonts.map(f => (
-                          <option key={f.value} value={f.value} style={{ fontFamily: f.value.split(',')[0].replace(/['"]/g, '') }}>
+                        {cat.fonts.map((f) => (
+                          <option
+                            key={f.value}
+                            value={f.value}
+                            style={{ fontFamily: f.value.split(',')[0].replace(/['"]/g, '') }}
+                          >
                             {f.label}
                           </option>
                         ))}
@@ -226,39 +202,37 @@ export default function ToolOptions({
                     ))}
                   </select>
                 </div>
-               <div className="tool-sidebar-field">
-                 <label>Font Size</label>
->>>>>>> Stashed changes
->>>>>>> Stashed changes
-                <div className="tool-sidebar-slider-row">
-                  <input
-                    type="range"
-                    min="8"
-                    max="120"
-                    value={selectedObject.fontSize || 24}
-                    onChange={(e) => onUpdateSelectedObject({ fontSize: Number(e.target.value) })}
-                  />
-                  <span className="tool-option-value">{selectedObject.fontSize || 24}px</span>
+                <div className="tool-sidebar-field">
+                  <label>Font Size</label>
+                  <div className="tool-sidebar-slider-row">
+                    <input
+                      type="range"
+                      min="8"
+                      max="120"
+                      value={selectedObject.fontSize || 24}
+                      onChange={(e) => onUpdateSelectedObject({ fontSize: Number(e.target.value) })}
+                    />
+                    <span className="tool-option-value">{selectedObject.fontSize || 24}px</span>
+                  </div>
                 </div>
-              </div>
-              <div className="tool-sidebar-field tool-sidebar-field--row">
-                <button
-                  className={`tool-option-btn ${selectedObject.fontWeight === 'bold' ? 'tool-option-btn--active' : ''}`}
-                  onClick={() => onUpdateSelectedObject({ fontWeight: selectedObject.fontWeight === 'bold' ? 'normal' : 'bold' })}
-                >
-                  B
-                </button>
-                {['left', 'center', 'right'].map(align => (
+                <div className="tool-sidebar-field tool-sidebar-field--row">
                   <button
-                    key={align}
-                    className={`tool-option-btn ${selectedObject.textAlign === align || (!selectedObject.textAlign && align === 'left') ? 'tool-option-btn--active' : ''}`}
-                    onClick={() => onUpdateSelectedObject({ textAlign: align })}
-                    style={{ flex: 1 }}
+                    className={`tool-option-btn ${selectedObject.fontWeight === 'bold' ? 'tool-option-btn--active' : ''}`}
+                    onClick={() => onUpdateSelectedObject({ fontWeight: selectedObject.fontWeight === 'bold' ? 'normal' : 'bold' })}
                   >
-                    {align === 'left' ? '\u2190' : align === 'center' ? '\u2194' : '\u2192'}
+                    B
                   </button>
-                ))}
-              </div>
+                  {['left', 'center', 'right'].map((align) => (
+                    <button
+                      key={align}
+                      className={`tool-option-btn ${selectedObject.textAlign === align || (!selectedObject.textAlign && align === 'left') ? 'tool-option-btn--active' : ''}`}
+                      onClick={() => onUpdateSelectedObject({ textAlign: align })}
+                      style={{ flex: 1 }}
+                    >
+                      {align === 'left' ? '\u2190' : align === 'center' ? '\u2194' : '\u2192'}
+                    </button>
+                  ))}
+                </div>
               </>
             )}
           </CollapsibleGroup>
@@ -410,30 +384,8 @@ export default function ToolOptions({
               <label>Color</label>
               <ColorPicker color={brushColor} onChange={setBrushColor} />
             </div>
-<<<<<<< Updated upstream
-             {activeTool === 'text' && (
-               <>
-               <div className="tool-sidebar-field">
-                 <label>Font Family</label>
-                 <select
-                   className="tool-sidebar-select"
-                   value={textFontFamily}
-                   onChange={(e) => setTextFontFamily(e.target.value)}
-                 >
-                   <option value="Inter, sans-serif">Inter</option>
-                   <option value="Arial, sans-serif">Arial</option>
-                   <option value="Roboto, sans-serif">Roboto</option>
-                   <option value="Georgia, serif">Georgia</option>
-                   <option value="Times New Roman, serif">Times New Roman</option>
-                   <option value="Courier New, monospace">Courier New</option>
-                   <option value="Impact, sans-serif">Impact</option>
-                 </select>
-               </div>
-=======
-<<<<<<< Updated upstream
-=======
-             {activeTool === 'text' && (
-               <>
+            {activeTool === 'text' && (
+              <>
                 <div className="tool-sidebar-field">
                   <label>Font Family</label>
                   <select
@@ -442,10 +394,14 @@ export default function ToolOptions({
                     onChange={(e) => setTextFontFamily(e.target.value)}
                     style={{ fontFamily: textFontFamily.split(',')[0].replace(/['"]/g, '') }}
                   >
-                    {FONT_CATEGORIES.map(cat => (
+                    {FONT_CATEGORIES.map((cat) => (
                       <optgroup key={cat.name} label={cat.name}>
-                        {cat.fonts.map(f => (
-                          <option key={f.value} value={f.value} style={{ fontFamily: f.value.split(',')[0].replace(/['"]/g, '') }}>
+                        {cat.fonts.map((f) => (
+                          <option
+                            key={f.value}
+                            value={f.value}
+                            style={{ fontFamily: f.value.split(',')[0].replace(/['"]/g, '') }}
+                          >
                             {f.label}
                           </option>
                         ))}
@@ -453,21 +409,16 @@ export default function ToolOptions({
                     ))}
                   </select>
                 </div>
->>>>>>> Stashed changes
-               <div className="tool-sidebar-field">
-                 <label>Text BG</label>
-                 <ColorPicker
-                   color={textBgColor}
-                   onChange={setTextBgColor}
-                   showNone={true}
-                 />
-               </div>
-               </>
-             )}
-<<<<<<< Updated upstream
-=======
->>>>>>> Stashed changes
->>>>>>> Stashed changes
+                <div className="tool-sidebar-field">
+                  <label>Text BG</label>
+                  <ColorPicker
+                    color={textBgColor}
+                    onChange={setTextBgColor}
+                    showNone={true}
+                  />
+                </div>
+              </>
+            )}
             {activeTool !== 'text' && (
               <div className="tool-sidebar-field">
                 <label>Opacity</label>
