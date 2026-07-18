@@ -178,11 +178,13 @@ export default function ChatWindow({ imageHistoryNode, head, onEditComplete, can
       
       const data = await res.json()
       const dataUri = `data:image/png;base64,${data.final_image}`
-      let label = ''
-      data.steps.forEach(
-        (step, i) => label += (i + 1 === data.steps.length) ? step.operation : step.operation + ' -> '
-      )
-      onEditComplete(dataUri, label, localStorage.getItem(head.id) || 'Untitled_Img.jpg', data)
+      console.table(data)
+      let parentId=null
+      for(const step of data.steps){
+        const stepDataUri = step.image.startsWith('data:') ? step.image : `data:image/png;base64,${step.image}`
+        const {id}=await onEditComplete(stepDataUri, step.operation , localStorage.getItem(head.id) || 'Untitled_Img.jpg', data.job_id, parentId);
+        parentId=id;
+      }
       setMessages((prev) => {
         const updated = [...prev, {
           role: 'assistant',

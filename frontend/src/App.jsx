@@ -394,16 +394,18 @@ function App() {
     await setNode(imageHistoryNode.prevNode)
   }, [imageHistoryNode, setNode])
 
-  const handleEditComplete = async (dataUri, label, filename) => {
+  const handleEditComplete = async (dataUri, label, filename, jobId, customParentId) => {
     setImageUrl(dataUri)
     setFilterValues({ Brightness: 0, Contrast: 0, Saturation: 0, HueRotation: 0, Blur: 0 })
     setActiveTool('select')
     const blob = dataURLtoBlob(dataUri)
     const { id } = await image.addImage(blob)
-    const node = await history.addNode({ label, time: new Date().toLocaleString(), imageId: id, filename }, imageHistoryNode.id)
+    const parentNodeId = customParentId || imageHistoryNode.id
+    const node = await history.addNode({ label, time: new Date().toLocaleString(), imageId: id, filename, jobId }, parentNodeId)
     localStorage.setItem(node.id, filename)
     setImageHistoryNode(node)
     setHistoryVersion(v => v + 1)
+    return node
   }
 
   useEffect(() => {

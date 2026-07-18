@@ -6,6 +6,7 @@ import {
   getBezierPath,
   useNodesState,
   useEdgesState,
+  MarkerType,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import dagre from 'dagre'
@@ -15,13 +16,31 @@ import { history } from '../utilities/indexedDB'
 function flattenTree(node, edges, currId) {
   const nodes = []
   const children = node.children || []
+  const currentJobId = node.jobId || node.job_id
   nodes.push({
     id: node.id,
     type: 'historyNode',
-    data: { title: node.label, subtitle: node.time, id: node.id, currId },
+    data: { title: node.label, subtitle: node.time, id: node.id, currId, jobId: currentJobId },
   })
   for (const child of children) {
-    edges.push({ id: `${node.id}->${child.id}`, source: node.id, target: child.id })
+    const childJobId = child.jobId || child.job_id
+    const hasSameJob = currentJobId && childJobId && currentJobId === childJobId
+    const edgeObj = {
+      id: `${node.id}->${child.id}`,
+      source: node.id,
+      target: child.id,
+      type: 'historyEdge',
+    }
+    if (hasSameJob) {
+      edgeObj.style = { stroke: '#00f0ff', strokeWidth: 3, strokeDasharray: 'none' }
+      edgeObj.markerEnd = {
+        type: MarkerType.ArrowClosed,
+        color: '#00f0ff',
+        width: 15,
+        height: 15,
+      }
+    }
+    edges.push(edgeObj)
     const [childNodes] = flattenTree(child, edges, currId)
     nodes.push(...childNodes)
   }
@@ -65,6 +84,8 @@ function HistoryEdge({
   sourcePosition,
   targetPosition,
   selected,
+  style,
+  markerEnd,
 }) {
   const [edgePath] = getBezierPath({
     sourceX,
@@ -80,6 +101,8 @@ function HistoryEdge({
       id={id}
       path={edgePath}
       className={`flow-edge${selected ? ' flow-edge--selected' : ''}`}
+      style={style}
+      markerEnd={markerEnd}
     />
   )
 }
