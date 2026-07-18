@@ -156,9 +156,12 @@ export default function ChatWindow({ imageHistoryNode, head, onEditComplete, can
     setInput('')
     
     try {
-      const res = await fetch('/edit', {
+      const res = await fetch('https://broadband-nag-enable.ngrok-free.dev/edit', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true'
+        },
         body: JSON.stringify({ prompt, image: canvasURI || await img_by_id(imageHistoryNode.imageId) }),
       })
       if (!res.ok) {

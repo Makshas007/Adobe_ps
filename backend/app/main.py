@@ -3,9 +3,10 @@ from __future__ import annotations
 import os
 
 # Reduce CUDA memory fragmentation — must be set before any PyTorch import.
-# expandable_segments allows the caching allocator to grow segments instead of
-# relying on large contiguous blocks, preventing spurious OOM on small GPUs.
-os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+os.environ.setdefault(
+    "PYTORCH_CUDA_ALLOC_CONF",
+    "expandable_segments:True,max_split_size_mb:128",
+)
 
 import gc
 from contextlib import asynccontextmanager
@@ -49,8 +50,8 @@ async def lifespan(app: FastAPI):
         if manager.has_loaded_model:
             app_logger.info("Unloading loaded model on shutdown")
             manager.unload_current()
-        from app.utils.gpu import clear_gpu
-        clear_gpu()
+        from app.utils.gpu import clear_gpu_aggressive
+        clear_gpu_aggressive()
         gc.collect()
         app_logger.info("Shutdown cleanup complete")
     except Exception as shutdown_exc:
@@ -111,9 +112,6 @@ if frontend_dist.exists():
     
     @app.get("/{full_path:path}")
     async def serve_frontend(full_path: str):
-        # Allow requests to /docs, /openapi.json, etc. to fall through? 
-        # Actually FastAPI evaluates routes in order of addition. 
-        # Since this is the last route, it acts as a catch-all.
         file_path = frontend_dist / full_path
         if file_path.is_file():
             return FileResponse(file_path)

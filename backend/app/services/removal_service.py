@@ -6,7 +6,7 @@ import numpy as np
 import torch
 from PIL import Image
 
-from app.utils.gpu import clear_gpu, gpu_memory_usage
+from app.utils.gpu import clear_gpu_aggressive, gpu_memory_usage
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -172,4 +172,4 @@ class RemovalService:
             logger.info("Unloading LaMa removal model")
             del self.model
             self.model = None
-        clear_gpu()
+        clear_gpu_aggressive()

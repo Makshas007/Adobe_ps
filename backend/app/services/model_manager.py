@@ -5,11 +5,7 @@ import time
 from enum import Enum
 from typing import Any, Dict, Optional
 
-from app.utils.gpu import (
-    clear_gpu,
-    get_device,
-    gpu_memory_usage,
-)
+from app.utils.gpu import clear_gpu_aggressive, cuda_available, get_device
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -68,9 +64,8 @@ class ModelManager:
             self._loaded_type = None
             self._loaded_time = 0.0
             gc.collect()
-            gc.collect()
-            if getattr(self.device, "type", "") == "cuda":
-                clear_gpu()
+            if cuda_available():
+                clear_gpu_aggressive()
 
     def _ensure_loaded(self, model_type: ModelType, load_fn: Any) -> Any:
         if self._loaded_type == model_type and self._loaded_model is not None:
@@ -82,13 +77,11 @@ class ModelManager:
 
         self._unload_current()
         logger.info("Loading model: %s", model_type.value)
-        logger.info("GPU memory before loading: %s", gpu_memory_usage())
         model = load_fn()
         self._loaded_type = model_type
         self._loaded_model = model
         self._loaded_time = time.monotonic()
         logger.info("Model %s loaded successfully on %s", model_type.value, self.device)
-        logger.info("GPU memory after loading: %s", gpu_memory_usage())
         return model
 
     def load_sam(self, model_path: str = "") -> Any:
