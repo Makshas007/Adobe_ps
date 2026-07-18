@@ -96,11 +96,8 @@ export default function ToolbarRibbon({
     formData.append("file", file);
 
     try {
-      const res = await fetch("https://broadband-nag-enable.ngrok-free.dev/upload", {
+      const res = await fetch("/upload", {
         method: "POST",
-        headers: {
-          'ngrok-skip-browser-warning': 'true'
-        },
         body: formData,
       });
       if (!res.ok) {
