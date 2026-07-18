@@ -25,6 +25,7 @@ function App() {
   const [toolOptionsOpen, setToolOptionsOpen] = useState(false)
   const [brushColor, setBrushColor] = useState('#FF1E8A')
   const [brushSize, setBrushSize] = useState(5)
+  const [blurStrength, setBlurStrength] = useState(10)
   const [brushOpacity, setBrushOpacity] = useState(1)
   const [textBgColor, setTextBgColor] = useState('transparent')
   const [zoom, setZoom] = useState(100)
@@ -191,6 +192,7 @@ function App() {
     setActiveTool('select')
     setBrushColor('#FF1E8A')
     setBrushSize(5)
+    setBlurStrength(10)
     setBrushOpacity(1)
     setSelectedObject(null)
     setZoom(100)
@@ -473,6 +475,8 @@ function App() {
             setBrushColor={setBrushColor}
             brushSize={brushSize}
             setBrushSize={setBrushSize}
+            blurStrength={blurStrength}
+            setBlurStrength={setBlurStrength}
             brushOpacity={brushOpacity}
             setBrushOpacity={setBrushOpacity}
             textBgColor={textBgColor}
@@ -496,6 +500,7 @@ function App() {
               activeTool={activeTool}
               brushColor={brushColor}
               brushSize={brushSize}
+              blurStrength={blurStrength}
               brushOpacity={brushOpacity}
               textBgColor={textBgColor}
               onCursorMove={setCursorPos}

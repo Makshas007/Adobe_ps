@@ -15,7 +15,7 @@ function getImageBounds(img) {
 }
 
 const CanvasEditor = forwardRef(function CanvasEditor(
-  { imageUrl, activeTool, brushColor, brushSize, brushOpacity, textBgColor, onCursorMove, onZoomChange, onImageDimensions, onCanvasReady, onToolChange, onCanvasHistoryChange, onImageLoaded, currentNodeId, onSelectionChange },
+  { imageUrl, activeTool, brushColor, brushSize, blurStrength, brushOpacity, textBgColor, onCursorMove, onZoomChange, onImageDimensions, onCanvasReady, onToolChange, onCanvasHistoryChange, onImageLoaded, currentNodeId, onSelectionChange },
   ref
 ) {
   const canvasRef = useRef(null)
@@ -237,10 +237,12 @@ const CanvasEditor = forwardRef(function CanvasEditor(
   const activeToolRef = useRef(activeTool)
   const brushColorRef = useRef(brushColor)
   const brushSizeRef = useRef(brushSize)
+  const blurStrengthRef = useRef(blurStrength)
   const brushOpacityRef = useRef(brushOpacity)
   useEffect(() => { activeToolRef.current = activeTool }, [activeTool])
   useEffect(() => { brushColorRef.current = brushColor }, [brushColor])
   useEffect(() => { brushSizeRef.current = brushSize }, [brushSize])
+  useEffect(() => { blurStrengthRef.current = blurStrength }, [blurStrength])
   useEffect(() => { brushOpacityRef.current = brushOpacity }, [brushOpacity])
 
   const onToolChangeRef = useRef(onToolChange)
@@ -615,11 +617,12 @@ const CanvasEditor = forwardRef(function CanvasEditor(
     ctx.drawImage(imgEl, 0, 0)
 
     const brushSize = brushSizeRef.current
+    const strength = blurStrengthRef.current
     const bCanvas = document.createElement('canvas')
     bCanvas.width = srcW
     bCanvas.height = srcH
     const bCtx = bCanvas.getContext('2d')
-    bCtx.filter = `blur(${brushSize * 1.5}px)`
+    bCtx.filter = `blur(${strength}px)`
     bCtx.drawImage(imgEl, 0, 0)
 
     const img = bgImageRef.current

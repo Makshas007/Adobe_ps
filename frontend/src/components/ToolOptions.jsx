@@ -39,6 +39,8 @@ export default function ToolOptions({
   setBrushColor,
   brushSize,
   setBrushSize,
+  blurStrength,
+  setBlurStrength,
   brushOpacity,
   setBrushOpacity,
   textBgColor,
@@ -261,7 +263,7 @@ export default function ToolOptions({
         {activeTool === 'blur' && (
           <CollapsibleGroup title="Blur Brush">
             <div className="tool-sidebar-field">
-              <span className="tool-option-hint">Paint over areas to blur them. Stronger effect with larger size.</span>
+              <span className="tool-option-hint">Paint over areas to blur them.</span>
             </div>
             <div className="tool-sidebar-field">
               <label>Size</label>
@@ -274,6 +276,19 @@ export default function ToolOptions({
                   onChange={(e) => setBrushSize(Number(e.target.value))}
                 />
                 <span className="tool-option-value">{brushSize}px</span>
+              </div>
+            </div>
+            <div className="tool-sidebar-field">
+              <label>Strength</label>
+              <div className="tool-sidebar-slider-row">
+                <input
+                  type="range"
+                  min="1"
+                  max="100"
+                  value={blurStrength}
+                  onChange={(e) => setBlurStrength(Number(e.target.value))}
+                />
+                <span className="tool-option-value">{blurStrength}</span>
               </div>
             </div>
           </CollapsibleGroup>
