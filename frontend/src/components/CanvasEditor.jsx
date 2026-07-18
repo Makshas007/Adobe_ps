@@ -250,6 +250,9 @@ const CanvasEditor = forwardRef(function CanvasEditor(
   const onSelectionChangeRef = useRef(onSelectionChange)
   useEffect(() => { onSelectionChangeRef.current = onSelectionChange }, [onSelectionChange])
 
+  const getSelectedObjectDataRef = useRef(null)
+  getSelectedObjectDataRef.current = getSelectedObjectData
+
   function getSelectedObjectData() {
     const canvas = fabricRef.current
     if (!canvas) return null
@@ -276,7 +279,6 @@ const CanvasEditor = forwardRef(function CanvasEditor(
       data.fontWeight = obj.fontWeight
       data.textAlign = obj.textAlign
       data.textBackgroundColor = obj.textBackgroundColor
-      console.log('[DEBUG] getSelectedObjectData. returning data.textBackgroundColor =', data.textBackgroundColor)
     }
     if (obj.type === 'ellipse') {
       data.rx = obj.rx
@@ -306,7 +308,7 @@ const CanvasEditor = forwardRef(function CanvasEditor(
       obj.setCoords()
       canvas.renderAll()
       saveCanvasState()
-      if (onSelectionChangeRef.current) onSelectionChangeRef.current(getSelectedObjectData())
+      if (onSelectionChangeRef.current) onSelectionChangeRef.current(getSelectedObjectDataRef.current())
     },
     deleteSelectedObject: () => {
       const canvas = fabricRef.current
@@ -704,7 +706,7 @@ const CanvasEditor = forwardRef(function CanvasEditor(
     canvas.on('path:created', handlePathCreated)
 
     const handleSelection = () => {
-      if (onSelectionChangeRef.current) onSelectionChangeRef.current(getSelectedObjectData())
+      if (onSelectionChangeRef.current) onSelectionChangeRef.current(getSelectedObjectDataRef.current())
     }
     const handleSelectionCleared = () => {
       if (onSelectionChangeRef.current) onSelectionChangeRef.current(null)
@@ -853,7 +855,6 @@ const CanvasEditor = forwardRef(function CanvasEditor(
       if (tool === 'text') {
         if (opt.target) return
         const pointer = canvas.getScenePoint(opt.e)
-        console.log('[DEBUG] Creating text. color =', color, 'textBgColor =', textBgColor)
         const t = new fabric.IText('Text', {
           left: pointer.x,
           top: pointer.y,
@@ -868,7 +869,6 @@ const CanvasEditor = forwardRef(function CanvasEditor(
         t.enterEditing()
         t.selectAll()
         canvas.renderAll()
-        console.log('[DEBUG] Created text. textBackgroundColor of new object =', t.textBackgroundColor)
       } else if (tool === 'rect' || tool === 'circle' || tool === 'line') {
         const pointer = canvas.getScenePoint(opt.e)
         shapeStartPoint.current = { x: pointer.x, y: pointer.y }
