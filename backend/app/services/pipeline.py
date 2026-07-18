@@ -17,9 +17,27 @@ from app.utils.logger import get_logger
 logger = get_logger(__name__)
 
 
+MAX_DIFFUSION_DIM = 1024
+
+
 class OperationHandler:
     def __init__(self, model_manager: ModelManager) -> None:
         self.model_manager = model_manager
+
+    @staticmethod
+    def _limit_diffusion_size(
+        image: Image.Image, alpha: Image.Image | None = None
+    ) -> tuple[Image.Image, Image.Image | None, tuple[int, int]]:
+        w, h = image.size
+        if max(w, h) > MAX_DIFFUSION_DIM:
+            ratio = MAX_DIFFUSION_DIM / max(w, h)
+            new_w = max(64, int(w * ratio) // 8 * 8)
+            new_h = max(64, int(h * ratio) // 8 * 8)
+            new_size = (new_w, new_h)
+            image = image.resize(new_size, Image.Resampling.LANCZOS)
+            if alpha is not None:
+                alpha = alpha.resize(new_size, Image.Resampling.LANCZOS)
+        return image, alpha, (w, h)
 
     @staticmethod
     def _is_human_image(image: Image.Image) -> bool:
@@ -130,12 +148,16 @@ class OperationHandler:
                 service = self.model_manager.load_removal()
                 process_params: Dict[str, Any] = {"mask": mask}
                 result = service.process("remove", image, process_params)
+                if result.size != image.size:
+                    result = result.resize(image.size, Image.Resampling.LANCZOS)
                 return result, {}
             except Exception as exc:
                 logger.warning(
                     "LaMa removal failed, falling back to diffusion inpainting: %s",
                     exc,
                 )
+
+        image, _, _ = self._limit_diffusion_size(image)
 
         process_params: Dict[str, Any] = {
             "prompt": f"empty background, {prompt}",
@@ -154,6 +176,8 @@ class OperationHandler:
             service = self.model_manager.load_diffusion()
 
         result = service.process("remove", image, process_params)
+        if result.size != image.size:
+            result = result.resize(image.size, Image.Resampling.LANCZOS)
         return result, {}
 
     def handle_replace_background(
@@ -406,7 +430,8 @@ class OperationHandler:
             background = Image.new("RGB", image.size, (255, 255, 255))
             background.paste(image.convert("RGB"), mask=alpha)
             image = background
-        orig_size = image.size
+
+        image, alpha, orig_size = self._limit_diffusion_size(image, alpha)
 
         logger.info("Pipeline step: style_transfer with '%s'", params.get("instruction", ""))
         service = self.model_manager.load_diffusion()
@@ -419,8 +444,11 @@ class OperationHandler:
         }
         result = service.process("style_transfer", image, process_params)
 
+        if result.size != image.size:
+            result = result.resize(image.size, Image.Resampling.LANCZOS)
+
         if alpha is not None:
-            result = result.convert("RGBA").resize(orig_size, Image.Resampling.LANCZOS)
+            result = result.convert("RGBA")
             result.putalpha(alpha)
 
         return result, {}
