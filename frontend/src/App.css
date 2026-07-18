@@ -1515,3 +1515,19 @@
   transform: scale(1.1);
   z-index: 1;
 }
+
+.color-swatch--transparent {
+  background-color: #ffffff !important;
+  position: relative !important;
+  overflow: hidden !important;
+}
+
+.color-swatch__none-slash {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 141%;
+  height: 2px;
+  background-color: #ff0000;
+  transform: translate(-50%, -50%) rotate(-45deg);
+}

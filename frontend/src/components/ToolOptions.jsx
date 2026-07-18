@@ -41,6 +41,8 @@ export default function ToolOptions({
   setBrushSize,
   brushOpacity,
   setBrushOpacity,
+  textBgColor,
+  setTextBgColor,
   onApplyCrop,
   onResize,
   filterValues,
@@ -62,7 +64,7 @@ export default function ToolOptions({
         <span>{selectedObject ? (TOOL_NAMES[activeTool] || 'Object Properties') : (TOOL_NAMES[activeTool] || 'Tool Settings')}</span>
       </div>
       <div className="tool-options-sidebar-content">
-        {selectedObject && (
+        {selectedObject ? (
           <>
           <CollapsibleGroup title="Position & Size">
             <div className="tool-sidebar-field tool-sidebar-field--row">
@@ -127,6 +129,16 @@ export default function ToolOptions({
                 onChange={(c) => onUpdateSelectedObject({ fill: c })}
               />
             </div>
+            {selectedObject.type === 'i-text' && (
+              <div className="tool-sidebar-field">
+                <label>Text BG</label>
+                <ColorPicker
+                  color={selectedObject.textBackgroundColor || 'transparent'}
+                  onChange={(c) => onUpdateSelectedObject({ textBackgroundColor: c })}
+                  showNone={true}
+                />
+              </div>
+            )}
             <div className="tool-sidebar-field">
               <label>Stroke</label>
               <ColorPicker
@@ -204,7 +216,8 @@ export default function ToolOptions({
             </div>
           )}
           </>
-        )}
+        ) : (
+          <>
 
         {(activeTool === 'brush' || activeTool === 'eraser') && (
           <CollapsibleGroup title="Brush">
@@ -330,6 +343,16 @@ export default function ToolOptions({
               <label>Color</label>
               <ColorPicker color={brushColor} onChange={setBrushColor} />
             </div>
+            {activeTool === 'text' && (
+              <div className="tool-sidebar-field">
+                <label>Text BG</label>
+                <ColorPicker
+                  color={textBgColor}
+                  onChange={setTextBgColor}
+                  showNone={true}
+                />
+              </div>
+            )}
             {activeTool !== 'text' && (
               <div className="tool-sidebar-field">
                 <label>Opacity</label>
@@ -369,6 +392,8 @@ export default function ToolOptions({
           <CollapsibleGroup title="Adjustments">
             <FilterControls values={filterValues} onChange={onFilterChange} onChangeComplete={onFilterChangeComplete} />
           </CollapsibleGroup>
+        )}
+          </>
         )}
       </div>
     </div>

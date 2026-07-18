@@ -15,7 +15,7 @@ function getImageBounds(img) {
 }
 
 const CanvasEditor = forwardRef(function CanvasEditor(
-  { imageUrl, activeTool, brushColor, brushSize, brushOpacity, onCursorMove, onZoomChange, onImageDimensions, onCanvasReady, onToolChange, onCanvasHistoryChange, onImageLoaded, currentNodeId, onSelectionChange },
+  { imageUrl, activeTool, brushColor, brushSize, brushOpacity, textBgColor, onCursorMove, onZoomChange, onImageDimensions, onCanvasReady, onToolChange, onCanvasHistoryChange, onImageLoaded, currentNodeId, onSelectionChange },
   ref
 ) {
   const canvasRef = useRef(null)
@@ -275,6 +275,8 @@ const CanvasEditor = forwardRef(function CanvasEditor(
       data.fontFamily = obj.fontFamily
       data.fontWeight = obj.fontWeight
       data.textAlign = obj.textAlign
+      data.textBackgroundColor = obj.textBackgroundColor
+      console.log('[DEBUG] getSelectedObjectData. returning data.textBackgroundColor =', data.textBackgroundColor)
     }
     if (obj.type === 'ellipse') {
       data.rx = obj.rx
@@ -303,6 +305,7 @@ const CanvasEditor = forwardRef(function CanvasEditor(
       obj.set(props)
       obj.setCoords()
       canvas.renderAll()
+      saveCanvasState()
       if (onSelectionChangeRef.current) onSelectionChangeRef.current(getSelectedObjectData())
     },
     deleteSelectedObject: () => {
@@ -850,12 +853,14 @@ const CanvasEditor = forwardRef(function CanvasEditor(
       if (tool === 'text') {
         if (opt.target) return
         const pointer = canvas.getScenePoint(opt.e)
+        console.log('[DEBUG] Creating text. color =', color, 'textBgColor =', textBgColor)
         const t = new fabric.IText('Text', {
           left: pointer.x,
           top: pointer.y,
           fontSize: 24,
           fontFamily: 'Inter, sans-serif',
           fill: color,
+          textBackgroundColor: textBgColor,
           editable: true,
         })
         canvas.add(t)
@@ -863,6 +868,7 @@ const CanvasEditor = forwardRef(function CanvasEditor(
         t.enterEditing()
         t.selectAll()
         canvas.renderAll()
+        console.log('[DEBUG] Created text. textBackgroundColor of new object =', t.textBackgroundColor)
       } else if (tool === 'rect' || tool === 'circle' || tool === 'line') {
         const pointer = canvas.getScenePoint(opt.e)
         shapeStartPoint.current = { x: pointer.x, y: pointer.y }
@@ -1195,7 +1201,7 @@ const CanvasEditor = forwardRef(function CanvasEditor(
         canvas.defaultCursor = 'default'
     }
     canvas.renderAll()
-  }, [activeTool, brushColor, brushSize, brushOpacity])
+  }, [activeTool, brushColor, brushSize, brushOpacity, textBgColor])
 
   useEffect(() => {
     const handleKeyDown = (e) => {

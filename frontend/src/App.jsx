@@ -26,6 +26,7 @@ function App() {
   const [brushColor, setBrushColor] = useState('#FF1E8A')
   const [brushSize, setBrushSize] = useState(5)
   const [brushOpacity, setBrushOpacity] = useState(1)
+  const [textBgColor, setTextBgColor] = useState('transparent')
   const [zoom, setZoom] = useState(100)
   const [imageDimensions, setImageDimensions] = useState(null)
   const [cursorPos, setCursorPos] = useState(null)
@@ -300,6 +301,10 @@ function App() {
           setHead(node)
           await setNode(uploadId)
         }
+        else{
+          console.log("Cant find chat #"+uploadId);
+          window.history.replaceState(null, '', '/')
+        }
       } catch (err) {
         console.error("Failed to load initial history:", err)
       }
@@ -470,6 +475,8 @@ function App() {
             setBrushSize={setBrushSize}
             brushOpacity={brushOpacity}
             setBrushOpacity={setBrushOpacity}
+            textBgColor={textBgColor}
+            setTextBgColor={setTextBgColor}
             onApplyCrop={handleApplyCrop}
             onResize={handleResize}
             filterValues={filterValues}
@@ -490,6 +497,7 @@ function App() {
               brushColor={brushColor}
               brushSize={brushSize}
               brushOpacity={brushOpacity}
+              textBgColor={textBgColor}
               onCursorMove={setCursorPos}
               onZoomChange={setZoom}
               onImageDimensions={setImageDimensions}

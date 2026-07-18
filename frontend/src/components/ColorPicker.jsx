@@ -11,8 +11,9 @@ const PRESET_COLORS = [
   '#5B0F00', '#660000', '#783F04', '#7F6000', '#274E13', '#0C343D', '#1C4587', '#073763', '#20124D', '#4C1130',
 ]
 
-export default function ColorPicker({ color, onChange }) {
+export default function ColorPicker({ color, onChange, showNone = false }) {
   const [open, setOpen] = useState(false)
+  const swatches = showNone ? ['transparent', ...PRESET_COLORS] : PRESET_COLORS
   const [hexInput, setHexInput] = useState(color)
   const panelRef = useRef(null)
   const inputRef = useRef(null)
@@ -51,7 +52,14 @@ export default function ColorPicker({ color, onChange }) {
         onClick={() => setOpen(!open)}
         title="Pick color"
       >
-        <span className="color-swatch-btn__fill" style={{ backgroundColor: color }} />
+        <span 
+          className={`color-swatch-btn__fill ${color === 'transparent' ? 'color-swatch--transparent' : ''}`} 
+          style={color === 'transparent' ? {} : { backgroundColor: color }}
+        >
+          {color === 'transparent' && (
+            <span className="color-swatch__none-slash" />
+          )}
+        </span>
         <span className="color-swatch-btn__border" />
       </button>
 
@@ -59,8 +67,15 @@ export default function ColorPicker({ color, onChange }) {
         <div className="color-panel">
           <div className="color-panel__header">
             <div className="color-panel__preview">
-              <span className="color-panel__preview-swatch" style={{ backgroundColor: color }} />
-              <span className="color-panel__preview-hex">{color}</span>
+              <span 
+                className={`color-panel__preview-swatch ${color === 'transparent' ? 'color-swatch--transparent' : ''}`} 
+                style={color === 'transparent' ? {} : { backgroundColor: color }}
+              >
+                {color === 'transparent' && (
+                  <span className="color-swatch__none-slash" />
+                )}
+              </span>
+              <span className="color-panel__preview-hex">{color === 'transparent' ? 'none' : color}</span>
             </div>
             <label className="color-panel__custom-btn" title="System color picker">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -68,7 +83,7 @@ export default function ColorPicker({ color, onChange }) {
               </svg>
               <input
                 type="color"
-                value={color}
+                value={color === 'transparent' ? '#ffffff' : color}
                 onChange={(e) => {
                   onChange(e.target.value)
                   setHexInput(e.target.value)
@@ -79,12 +94,12 @@ export default function ColorPicker({ color, onChange }) {
           </div>
 
           <div className="color-panel__hex-row">
-            <span className="color-panel__hex-prefix">#</span>
+            {hexInput !== 'transparent' && <span className="color-panel__hex-prefix">#</span>}
             <input
               ref={inputRef}
               type="text"
               className="color-panel__hex-input"
-              value={hexInput.replace('#', '')}
+              value={hexInput === 'transparent' ? 'none' : hexInput.replace('#', '')}
               onChange={(e) => {
                 const val = '#' + e.target.value.replace(/[^0-9A-Fa-f]/g, '').slice(0, 6)
                 setHexInput(val)
@@ -107,19 +122,27 @@ export default function ColorPicker({ color, onChange }) {
           </div>
 
           <div className="color-panel__swatches">
-            {PRESET_COLORS.map((c) => (
-              <button
-                key={c}
-                className={`color-swatch ${c.toUpperCase() === color.toUpperCase() ? 'color-swatch--active' : ''}`}
-                style={{ backgroundColor: c }}
-                onClick={() => {
-                  onChange(c)
-                  setHexInput(c)
-                  setOpen(false)
-                }}
-                title={c}
-              />
-            ))}
+            {swatches.map((c) => {
+              const isTransparent = c === 'transparent'
+              const isActive = color && c.toUpperCase() === color.toUpperCase()
+              return (
+                <button
+                  key={c}
+                  className={`color-swatch ${isActive ? 'color-swatch--active' : ''} ${isTransparent ? 'color-swatch--transparent' : ''}`}
+                  style={isTransparent ? {} : { backgroundColor: c }}
+                  onClick={() => {
+                    onChange(c)
+                    setHexInput(c)
+                    setOpen(false)
+                  }}
+                  title={isTransparent ? 'None' : c}
+                >
+                  {isTransparent && (
+                    <span className="color-swatch__none-slash" />
+                  )}
+                </button>
+              )
+            })}
           </div>
         </div>
       )}
