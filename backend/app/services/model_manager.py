@@ -56,13 +56,19 @@ class ModelManager:
                 self._loaded_type.value if self._loaded_type else "unknown",
                 time.monotonic() - self._loaded_time,
             )
+            if hasattr(self._loaded_model, 'unload'):
+                try:
+                    self._loaded_model.unload()
+                except Exception:
+                    pass
             del self._loaded_model
             self._loaded_model = None
             self._loaded_type = None
             self._loaded_time = 0.0
+            gc.collect()
+            gc.collect()
             if getattr(self.device, "type", "") == "cuda":
                 clear_gpu()
-            gc.collect()
 
     def _ensure_loaded(self, model_type: ModelType, load_fn: Any) -> Any:
         if self._loaded_type == model_type and self._loaded_model is not None:

@@ -83,6 +83,8 @@ class DiffusionService:
 
         self.pipeline = self.pipeline.to(self.device)
         self.pipeline.set_progress_bar_config(disable=True)
+        # Reduce peak memory: process attention in slices instead of all at once
+        self.pipeline.enable_attention_slicing()
         logger.info("Diffusion model loaded on %s", self.device)
 
     def process(
@@ -110,6 +112,7 @@ class DiffusionService:
                 raise ValueError(f"Unsupported operation for diffusion: {operation}")
 
     def _inpaint_remove(self, image: Image.Image, params: Dict[str, Any]) -> Image.Image:
+        image = image.convert("RGB")
         prompt = params.get("prompt", "empty background, remove subject, clean")
         negative = params.get("negative_prompt", "object, subject, person, thing")
         guidance = params.get("guidance_scale", 7.5)
@@ -127,6 +130,7 @@ class DiffusionService:
         return result
 
     def _inpaint_with_mask(self, image: Image.Image, params: Dict[str, Any]) -> Image.Image:
+        image = image.convert("RGB")
         prompt = params.get("prompt", "empty background, remove subject, clean")
         negative = params.get("negative_prompt", "object, subject, person, thing")
         guidance = params.get("guidance_scale", 7.5)
@@ -173,6 +177,7 @@ class DiffusionService:
         return result
 
     def _apply_style(self, image: Image.Image, params: Dict[str, Any]) -> Image.Image:
+        image = image.convert("RGB")
         instruction = params.get("instruction", "apply artistic style")
         guidance = params.get("guidance_scale", 7.5)
         strength = params.get("strength", 0.75)

@@ -1,5 +1,12 @@
 from __future__ import annotations
 
+import os
+
+# Reduce CUDA memory fragmentation — must be set before any PyTorch import.
+# expandable_segments allows the caching allocator to grow segments instead of
+# relying on large contiguous blocks, preventing spurious OOM on small GPUs.
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+
 import gc
 from contextlib import asynccontextmanager
 from pathlib import Path

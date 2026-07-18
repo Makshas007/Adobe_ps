@@ -244,11 +244,11 @@ class OperationHandler:
             from PIL import ImageFilter
 
             if is_human:
-                session = rembg.new_session("u2net_human_seg")
-                logger.info("Using rembg model: u2net_human_seg")
+                session = rembg.new_session("u2net_human_seg", providers=["CPUExecutionProvider"])
+                logger.info("Using rembg model: u2net_human_seg (CPU)")
             else:
-                session = rembg.new_session("isnet-general-use")
-                logger.info("Using rembg model: isnet-general-use")
+                session = rembg.new_session("isnet-general-use", providers=["CPUExecutionProvider"])
+                logger.info("Using rembg model: isnet-general-use (CPU)")
 
             try:
                 result = rembg.remove(
@@ -301,6 +301,18 @@ class OperationHandler:
             r_orig, g_orig, b_orig, _ = orig_rgba.split()
             result = Image.merge("RGBA", (r_orig, g_orig, b_orig, alpha_img))
 
+            del session
+            del ai_alpha, alpha_img, alpha_np
+            import gc
+            gc.collect()
+            gc.collect()
+            try:
+                import torch
+                torch.cuda.synchronize()
+                torch.cuda.empty_cache()
+            except Exception:
+                pass
+
             from app.utils.image_utils import image_to_base64
             subject_b64 = image_to_base64(result)
             layers = [{
@@ -337,6 +349,12 @@ class OperationHandler:
         params: Dict[str, Any],
         context: Optional[Dict[str, Any]] = None,
     ) -> Tuple[Image.Image, Dict[str, Any]]:
+        alpha = None
+        if image.mode == "RGBA":
+            alpha = image.split()[3]
+            image = image.convert("RGB")
+        orig_size = image.size
+
         logger.info("Pipeline step: style_transfer with '%s'", params.get("instruction", ""))
         service = self.model_manager.load_diffusion()
         process_params = {
@@ -347,6 +365,11 @@ class OperationHandler:
             "steps": 30,
         }
         result = service.process("style_transfer", image, process_params)
+
+        if alpha is not None:
+            result = result.convert("RGBA").resize(orig_size, Image.Resampling.LANCZOS)
+            result.putalpha(alpha)
+
         return result, {}
 
     def handle_change_style(
@@ -531,7 +554,15 @@ class PipelineExecutor:
                 if context.get("mask") is not None and op_name != "segment":
                     context.pop("mask", None)
 
+                self.model_manager.unload_current()
                 gc.collect()
+                try:
+                    import torch
+                    torch.cuda.empty_cache()
+                    from app.utils.gpu import clear_gpu
+                    clear_gpu()
+                except Exception:
+                    pass
 
             except Exception as exc:
                 step_duration = (time.monotonic() - step_start) * 1000
