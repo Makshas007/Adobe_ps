@@ -28,6 +28,7 @@ from app.services.explanation import ExplanationService
 from app.services.gemini_service import GeminiError
 from app.services.planner import Planner
 from app.services.pipeline import PipelineExecutor
+from app.utils.gpu import clear_gpu_aggressive
 from app.utils.image_utils import data_url_to_image, image_to_base64, load_image
 from app.utils.logger import get_logger
 from app.vision.engine import ImageUnderstandingEngine
@@ -269,6 +270,8 @@ async def edit_image(
         steps_list = [
             StepInfo(**s) for s in partial_steps
         ] if partial_steps else []
+
+        clear_gpu_aggressive()
 
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

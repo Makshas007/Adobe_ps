@@ -7,7 +7,7 @@ from PIL import Image
 import torch
 import torch.nn as nn
 
-from app.utils.gpu import gpu_memory_usage
+from app.utils.gpu import clear_gpu_aggressive, gpu_memory_usage
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -69,8 +69,7 @@ class ESRGANService:
             logger.info("Unloading ESRGAN model")
             del self.model
             self.model = None
-            from app.utils.gpu import clear_gpu
-            clear_gpu()
+            clear_gpu_aggressive()
 
 class RRDB(nn.Module):
     def __init__(self, channels: int = 64) -> None:

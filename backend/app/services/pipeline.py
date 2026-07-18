@@ -11,6 +11,7 @@ from PIL import Image
 from app.config import settings
 from app.services.execution_log import ExecutionLog, ExecutionLogEntry, LogStatus
 from app.services.model_manager import ModelManager
+from app.utils.gpu import clear_gpu_aggressive, cuda_available, gpu_memory_usage
 from app.utils.image_utils import ensure_rgb, image_to_base64, save_image
 from app.utils.logger import get_logger
 
@@ -26,11 +27,11 @@ class OperationHandler:
 
     @staticmethod
     def _limit_diffusion_size(
-        image: Image.Image, alpha: Image.Image | None = None
+        image: Image.Image, alpha: Image.Image | None = None, max_dim: int = MAX_DIFFUSION_DIM
     ) -> tuple[Image.Image, Image.Image | None, tuple[int, int]]:
         w, h = image.size
-        if max(w, h) > MAX_DIFFUSION_DIM:
-            ratio = MAX_DIFFUSION_DIM / max(w, h)
+        if max(w, h) > max_dim:
+            ratio = max_dim / max(w, h)
             new_w = max(64, int(w * ratio) // 8 * 8)
             new_h = max(64, int(h * ratio) // 8 * 8)
             new_size = (new_w, new_h)
@@ -40,12 +41,26 @@ class OperationHandler:
         return image, alpha, (w, h)
 
     @staticmethod
-    def _is_human_image(image: Image.Image) -> bool:
-        """Detect whether the image contains a human face.
+    def _diffusion_max_dim() -> int:
+        try:
+            import app.utils.gpu as gpu_utils
 
-        Uses OpenCV Haar cascade when available (OpenCV <5).
-        Falls back to non-human path on any failure.
-        """
+            total_gb = getattr(gpu_utils, "get_total_memory", lambda: 0.0)()
+        except Exception:
+            return MAX_DIFFUSION_DIM
+
+        if total_gb <= 0:
+            return MAX_DIFFUSION_DIM
+        if total_gb < 4.5:
+            return 512
+        if total_gb < 6:
+            return 640
+        if total_gb < 8:
+            return 768
+        return MAX_DIFFUSION_DIM
+
+    @staticmethod
+    def _is_human_image(image: Image.Image) -> bool:
         try:
             import cv2
             if not hasattr(cv2, "CascadeClassifier"):
@@ -97,11 +112,6 @@ class OperationHandler:
 
     @staticmethod
     def _is_person_removal(instruction: str, image: Image.Image) -> bool:
-        """Detect if the removal target is a person based on instruction and image.
-
-        Checks the instruction text for person-related keywords first, then
-        falls back to face detection via Haar cascade.
-        """
         person_keywords = [
             "person", "people", "human", "man", "woman", "child", "children",
             "guy", "girl", "boy", "pedestrian", "crowd", "someone", "somebody",
@@ -157,7 +167,7 @@ class OperationHandler:
                     exc,
                 )
 
-        image, _, _ = self._limit_diffusion_size(image)
+        image, _, _ = self._limit_diffusion_size(image, max_dim=self._diffusion_max_dim())
 
         process_params: Dict[str, Any] = {
             "prompt": f"empty background, {prompt}",
@@ -219,6 +229,7 @@ class OperationHandler:
             process_params["prompt"] = process_params.pop("instruction")
             service = self.model_manager.load_diffusion(model_type="inpaint")
         else:
+            image, _, _ = self._limit_diffusion_size(image, max_dim=self._diffusion_max_dim())
             service = self.model_manager.load_diffusion()
 
         result = service.process("replace_background", image, process_params)
@@ -308,8 +319,6 @@ class OperationHandler:
         try:
             import torch
             torch.cuda.empty_cache()
-            from app.utils.gpu import clear_gpu
-            clear_gpu()
         except Exception:
             pass
 
@@ -349,29 +358,16 @@ class OperationHandler:
 
             ai_alpha = np.array(result.split()[3])
 
-            # ── Post-process alpha mask ────────────────────────────────────
-            # Trust the AI mask directly. The LAB color-distance mask is
-            # omitted because it assumes a uniform background color across the
-            # entire image, which breaks when the foreground touches the
-            # corners or the background is complex, causing the mask to become
-            # fully opaque.
-
-            # Dilation (3px) to recover clipped edge pixels (e.g. thin text).
             dilation = 5 if is_human else 3
             alpha_img = Image.fromarray(ai_alpha, mode="L")
             alpha_img = alpha_img.filter(ImageFilter.MaxFilter(dilation))
-
-            # Gaussian feathering for smooth, natural edges.
             alpha_img = alpha_img.filter(ImageFilter.GaussianBlur(radius=1.5))
 
-            # Re-threshold: interior fully opaque, border feathered,
-            # background fully transparent.
             alpha_np = np.array(alpha_img, dtype=np.float32)
             alpha_np = np.where(alpha_np > 240, 255.0, alpha_np)
             alpha_np = np.where(alpha_np < 15, 0.0, alpha_np)
             alpha_img = Image.fromarray(alpha_np.astype(np.uint8), mode="L")
 
-            # ── Final assembly ────────────────────────────────────────────
             orig_rgba = image.convert("RGBA")
             r_orig, g_orig, b_orig, _ = orig_rgba.split()
             result = Image.merge("RGBA", (r_orig, g_orig, b_orig, alpha_img))
@@ -417,7 +413,7 @@ class OperationHandler:
             image_rgba.putalpha(mask_l)
             rgba_b64 = _i2b(image_rgba)
             return image_rgba, {"layers": [{"id": "subject", "name": "Subject", "image": rgba_b64, "layer_type": "foreground", "visible": True}]}
-        
+
     def handle_style_transfer(
         self,
         image: Image.Image,
@@ -431,7 +427,7 @@ class OperationHandler:
             background.paste(image.convert("RGB"), mask=alpha)
             image = background
 
-        image, alpha, orig_size = self._limit_diffusion_size(image, alpha)
+        image, alpha, orig_size = self._limit_diffusion_size(image, alpha, max_dim=self._diffusion_max_dim())
 
         logger.info("Pipeline step: style_transfer with '%s'", params.get("instruction", ""))
         service = self.model_manager.load_diffusion()
@@ -556,6 +552,11 @@ class PipelineExecutor:
         mask_np = np.where(diff_gray > threshold, 255, 0).astype(np.uint8)
         return Image.fromarray(mask_np, mode="L")
 
+    def _cleanup_gpu(self) -> None:
+        gc.collect()
+        if cuda_available():
+            clear_gpu_aggressive()
+
     def _execute_sync(
         self,
         plan: List[Dict[str, Any]],
@@ -634,14 +635,7 @@ class PipelineExecutor:
                     context.pop("mask", None)
 
                 self.model_manager.unload_current()
-                gc.collect()
-                try:
-                    import torch
-                    torch.cuda.empty_cache()
-                    from app.utils.gpu import clear_gpu
-                    clear_gpu()
-                except Exception:
-                    pass
+                self._cleanup_gpu()
 
             except Exception as exc:
                 step_duration = (time.monotonic() - step_start) * 1000
@@ -667,12 +661,13 @@ class PipelineExecutor:
                 execution_log.append(log_entry)
 
                 self.model_manager.unload_current()
-                gc.collect()
+                self._cleanup_gpu()
                 raise RuntimeError(
                     f"Pipeline failed at step {step_index + 1} ({op_name}): {exc}"
                 ) from exc
 
         self.model_manager.unload_current()
+        self._cleanup_gpu()
 
         logger.info(
             "Pipeline complete for job %s: %d steps executed",

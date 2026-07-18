@@ -5,7 +5,7 @@ from typing import Any, Dict, Optional
 
 from PIL import Image
 
-from app.utils.gpu import gpu_memory_usage
+import app.utils.gpu as gpu_utils
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -45,7 +45,7 @@ class DiffusionService:
             raise ValueError(f"Unknown diffusion model type: {model_type}")
 
         logger.info("Loading diffusion model: %s", model_id)
-        logger.info("GPU memory before loading diffusion: %s", gpu_memory_usage())
+        logger.info("GPU memory before loading diffusion: %s", gpu_utils.gpu_memory_usage())
 
         safety_checker = None
 
@@ -81,10 +81,34 @@ class DiffusionService:
         else:
             raise ValueError(f"Unsupported model type: {model_type}")
 
-        self.pipeline = self.pipeline.to(self.device)
+        is_cuda = getattr(self.device, "type", "") == "cuda"
+
+        if is_cuda:
+            total_gb = getattr(gpu_utils, "get_total_memory", lambda: 0.0)()
+            # On small GPUs (<6 GB) use model CPU offloading — keeps weights on CPU,
+            # moves only the active component to GPU. This adds ~20% overhead but
+            # allows models that exceed VRAM to run.
+            if total_gb < 6:
+                logger.info(
+                    "GPU has %.1f GB total — enabling model CPU offload to fit diffusion",
+                    total_gb,
+                )
+                self.pipeline.enable_attention_slicing()
+                if hasattr(self.pipeline, "enable_vae_slicing"):
+                    self.pipeline.enable_vae_slicing()
+                try:
+                    self.pipeline.enable_sequential_cpu_offload()
+                    logger.info("Enabled sequential CPU offload for diffusion")
+                except Exception:
+                    self.pipeline.enable_model_cpu_offload()
+            else:
+                self.pipeline = self.pipeline.to(self.device)
+                self.pipeline.enable_attention_slicing()
+        else:
+            self.pipeline = self.pipeline.to(self.device)
+            self.pipeline.enable_attention_slicing()
+
         self.pipeline.set_progress_bar_config(disable=True)
-        # Reduce peak memory: process attention in slices instead of all at once
-        self.pipeline.enable_attention_slicing()
         logger.info("Diffusion model loaded on %s", self.device)
 
     def process(
@@ -220,5 +244,4 @@ class DiffusionService:
             logger.info("Unloading diffusion pipeline")
             del self.pipeline
             self.pipeline = None
-            from app.utils.gpu import clear_gpu
-            clear_gpu()
+            gpu_utils.clear_gpu_aggressive()

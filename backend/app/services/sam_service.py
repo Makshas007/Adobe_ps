@@ -7,7 +7,7 @@ import numpy as np
 import torch
 from PIL import Image
 
-from app.utils.gpu import clear_gpu
+from app.utils.gpu import clear_gpu_aggressive
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -24,7 +24,7 @@ class SAMService:
     def load_model(self, model_path: str = "") -> None:
         from transformers import SamModel, SamProcessor
 
-        clear_gpu()
+        clear_gpu_aggressive()
         model_id = model_path or SAM_MODEL_ID
         is_cuda = getattr(self.device, "type", "") == "cuda"
         dtype = torch.float16 if is_cuda else torch.float32
@@ -123,4 +123,4 @@ class SAMService:
         if self.processor is not None:
             del self.processor
             self.processor = None
-        clear_gpu()
+        clear_gpu_aggressive()

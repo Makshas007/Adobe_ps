@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gc
 from typing import Any
 
 from app.utils.logger import get_logger
@@ -49,7 +50,22 @@ def clear_gpu() -> None:
     if torch is not None and cuda_available():
         torch.cuda.empty_cache()
         torch.cuda.synchronize()
-        logger.info("GPU cache cleared")
+
+
+def clear_gpu_aggressive() -> None:
+    torch = _get_torch()
+    if torch is None or not cuda_available():
+        return
+    gc.collect()
+    torch.cuda.empty_cache()
+    torch.cuda.synchronize()
+
+
+def get_total_memory() -> float:
+    torch = _get_torch()
+    if not cuda_available():
+        return 0.0
+    return torch.cuda.get_device_properties(0).total_memory / 1024**3
 
 
 def gpu_memory_usage() -> str:
@@ -87,11 +103,7 @@ def gpu_memory_summary() -> str:
     )
 
 
-def move_to_device(
-    model: Any,
-    device: Any,
-) -> Any:
-    logger.info("Moving model to %s", device)
+def move_to_device(model: Any, device: Any) -> Any:
     return model.to(device)
 
 
