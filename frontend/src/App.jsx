@@ -140,6 +140,12 @@ function App() {
     }
   }, [])
 
+  const handleFilterChangeComplete = useCallback(() => {
+    if (canvasRef.current) {
+      canvasRef.current.saveState()
+    }
+  }, [])
+
   const handleUpload = async ({ url, filename }) => {
     setImageUrl(url)
     setFilterValues({ Brightness: 0, Contrast: 0, Saturation: 0, HueRotation: 0, Blur: 0 })
@@ -468,6 +474,7 @@ function App() {
             onResize={handleResize}
             filterValues={filterValues}
             onFilterChange={handleFilterChange}
+            onFilterChangeComplete={handleFilterChangeComplete}
             imageDimensions={imageDimensions}
             optionsOpen={toolOptionsOpen}
             selectedObject={selectedObject}

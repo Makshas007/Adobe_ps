@@ -45,6 +45,7 @@ export default function ToolOptions({
   onResize,
   filterValues,
   onFilterChange,
+  onFilterChangeComplete,
   imageDimensions,
   optionsOpen,
   selectedObject,
@@ -366,7 +367,7 @@ export default function ToolOptions({
 
         {activeTool === 'filter' && (
           <CollapsibleGroup title="Adjustments">
-            <FilterControls values={filterValues} onChange={onFilterChange} />
+            <FilterControls values={filterValues} onChange={onFilterChange} onChangeComplete={onFilterChangeComplete} />
           </CollapsibleGroup>
         )}
       </div>
@@ -460,7 +461,7 @@ function ResizeControls({ onResize, imageDimensions }) {
   )
 }
 
-function FilterControls({ values, onChange }) {
+function FilterControls({ values, onChange, onChangeComplete }) {
   const filters = [
     { key: 'Brightness', label: 'Brightness', min: -1, max: 1, step: 0.05 },
     { key: 'Contrast', label: 'Contrast', min: -1, max: 1, step: 0.05 },
@@ -482,6 +483,8 @@ function FilterControls({ values, onChange }) {
               step={f.step}
               value={values[f.key] ?? 0}
               onChange={(e) => onChange(f.key, parseFloat(e.target.value))}
+              onMouseUp={onChangeComplete}
+              onTouchEnd={onChangeComplete}
             />
             <span className="tool-option-value">
               {(values[f.key] ?? 0).toFixed(2)}
