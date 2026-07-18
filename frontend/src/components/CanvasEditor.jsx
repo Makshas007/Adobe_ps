@@ -15,7 +15,7 @@ function getImageBounds(img) {
 }
 
 const CanvasEditor = forwardRef(function CanvasEditor(
-  { imageUrl, activeTool, brushColor, brushSize, blurStrength, brushOpacity, textBgColor, onCursorMove, onZoomChange, onImageDimensions, onCanvasReady, onToolChange, onCanvasHistoryChange, onImageLoaded, currentNodeId, onSelectionChange },
+  { imageUrl, activeTool, brushColor, brushSize, blurStrength, brushOpacity, textBgColor, textFontFamily, onCursorMove, onZoomChange, onImageDimensions, onCanvasReady, onToolChange, onCanvasHistoryChange, onImageLoaded, currentNodeId, onSelectionChange },
   ref
 ) {
   const canvasRef = useRef(null)
@@ -862,7 +862,7 @@ const CanvasEditor = forwardRef(function CanvasEditor(
           left: pointer.x,
           top: pointer.y,
           fontSize: 24,
-          fontFamily: 'Inter, sans-serif',
+          fontFamily: textFontFamily,
           fill: color,
           textBackgroundColor: textBgColor,
           editable: true,
@@ -1204,7 +1204,7 @@ const CanvasEditor = forwardRef(function CanvasEditor(
         canvas.defaultCursor = 'default'
     }
     canvas.renderAll()
-  }, [activeTool, brushColor, brushSize, brushOpacity, textBgColor])
+  }, [activeTool, brushColor, brushSize, brushOpacity, textBgColor, textFontFamily])
 
   useEffect(() => {
     const handleKeyDown = (e) => {

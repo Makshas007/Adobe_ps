@@ -28,6 +28,7 @@ function App() {
   const [blurStrength, setBlurStrength] = useState(10)
   const [brushOpacity, setBrushOpacity] = useState(1)
   const [textBgColor, setTextBgColor] = useState('transparent')
+  const [textFontFamily, setTextFontFamily] = useState('Inter, sans-serif')
   const [zoom, setZoom] = useState(100)
   const [imageDimensions, setImageDimensions] = useState(null)
   const [cursorPos, setCursorPos] = useState(null)
@@ -481,6 +482,8 @@ function App() {
             setBrushOpacity={setBrushOpacity}
             textBgColor={textBgColor}
             setTextBgColor={setTextBgColor}
+            textFontFamily={textFontFamily}
+            setTextFontFamily={setTextFontFamily}
             onApplyCrop={handleApplyCrop}
             onResize={handleResize}
             filterValues={filterValues}
@@ -503,6 +506,7 @@ function App() {
               blurStrength={blurStrength}
               brushOpacity={brushOpacity}
               textBgColor={textBgColor}
+              textFontFamily={textFontFamily}
               onCursorMove={setCursorPos}
               onZoomChange={setZoom}
               onImageDimensions={setImageDimensions}

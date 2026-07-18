@@ -45,6 +45,8 @@ export default function ToolOptions({
   setBrushOpacity,
   textBgColor,
   setTextBgColor,
+  textFontFamily,
+  setTextFontFamily,
   onApplyCrop,
   onResize,
   filterValues,
@@ -174,10 +176,26 @@ export default function ToolOptions({
                 <span className="tool-option-value">{Math.round((selectedObject.opacity ?? 1) * 100)}%</span>
               </div>
             </div>
-            {selectedObject.type === 'i-text' && (
-              <>
-              <div className="tool-sidebar-field">
-                <label>Font Size</label>
+             {selectedObject.type === 'i-text' && (
+               <>
+               <div className="tool-sidebar-field">
+                 <label>Font Family</label>
+                 <select
+                   className="tool-sidebar-select"
+                   value={selectedObject.fontFamily || 'Inter, sans-serif'}
+                   onChange={(e) => onUpdateSelectedObject({ fontFamily: e.target.value })}
+                 >
+                   <option value="Inter, sans-serif">Inter</option>
+                   <option value="Arial, sans-serif">Arial</option>
+                   <option value="Roboto, sans-serif">Roboto</option>
+                   <option value="Georgia, serif">Georgia</option>
+                   <option value="Times New Roman, serif">Times New Roman</option>
+                   <option value="Courier New, monospace">Courier New</option>
+                   <option value="Impact, sans-serif">Impact</option>
+                 </select>
+               </div>
+               <div className="tool-sidebar-field">
+                 <label>Font Size</label>
                 <div className="tool-sidebar-slider-row">
                   <input
                     type="range"
@@ -358,16 +376,34 @@ export default function ToolOptions({
               <label>Color</label>
               <ColorPicker color={brushColor} onChange={setBrushColor} />
             </div>
-            {activeTool === 'text' && (
-              <div className="tool-sidebar-field">
-                <label>Text BG</label>
-                <ColorPicker
-                  color={textBgColor}
-                  onChange={setTextBgColor}
-                  showNone={true}
-                />
-              </div>
-            )}
+             {activeTool === 'text' && (
+               <>
+               <div className="tool-sidebar-field">
+                 <label>Font Family</label>
+                 <select
+                   className="tool-sidebar-select"
+                   value={textFontFamily}
+                   onChange={(e) => setTextFontFamily(e.target.value)}
+                 >
+                   <option value="Inter, sans-serif">Inter</option>
+                   <option value="Arial, sans-serif">Arial</option>
+                   <option value="Roboto, sans-serif">Roboto</option>
+                   <option value="Georgia, serif">Georgia</option>
+                   <option value="Times New Roman, serif">Times New Roman</option>
+                   <option value="Courier New, monospace">Courier New</option>
+                   <option value="Impact, sans-serif">Impact</option>
+                 </select>
+               </div>
+               <div className="tool-sidebar-field">
+                 <label>Text BG</label>
+                 <ColorPicker
+                   color={textBgColor}
+                   onChange={setTextBgColor}
+                   showNone={true}
+                 />
+               </div>
+               </>
+             )}
             {activeTool !== 'text' && (
               <div className="tool-sidebar-field">
                 <label>Opacity</label>
