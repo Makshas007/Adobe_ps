@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import gc
+import os
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -22,15 +23,16 @@ class OperationHandler:
 
     @staticmethod
     def _is_human_image(image: Image.Image) -> bool:
-        """Detect whether the image contains a human face using OpenCV's cascade classifier.
+        """Detect whether the image contains a human face.
 
-        This is a lightweight check (~5ms) used to choose the right background
-        removal model and edge-processing strategy.
+        Uses OpenCV Haar cascade when available (OpenCV <5).
+        Falls back to non-human path on any failure.
         """
         try:
             import cv2
+            if not hasattr(cv2, "CascadeClassifier"):
+                return False
             gray = cv2.cvtColor(np.array(image.convert("RGB")), cv2.COLOR_RGB2GRAY)
-            # Resize for speed if the image is large
             max_dim = 640
             h, w = gray.shape[:2]
             if max(h, w) > max_dim:
@@ -45,8 +47,7 @@ class OperationHandler:
             detected = len(faces) > 0
             logger.info("Human detection: %s (%d face(s) found)", detected, len(faces))
             return detected
-        except Exception as exc:
-            logger.warning("Human detection failed, defaulting to non-human path: %s", exc)
+        except Exception:
             return False
 
     def handle_segment(
@@ -69,6 +70,10 @@ class OperationHandler:
             details = {"mask": str(mask_path)}
         else:
             details = {}
+
+        from app.utils.image_utils import image_to_base64
+        mask_b64 = image_to_base64(mask.convert("L")) if mask else ""
+        details["mask_image"] = mask_b64
 
         return result_image, details
 
@@ -107,7 +112,19 @@ class OperationHandler:
         context: Optional[Dict[str, Any]] = None,
     ) -> Tuple[Image.Image, Dict[str, Any]]:
         logger.info("Pipeline step: replace_background with '%s'", params.get("instruction", ""))
+        import io
+        import base64 as b64_mod
         mask = context.get("mask") if context else None
+        from app.utils.image_utils import image_to_base64
+
+        if mask is None:
+            logger.info("No mask in context, segmenting main subject for layer decomposition")
+            _, mask_details = self.handle_segment(image, {"target": "main subject", "save_mask": False}, context)
+            mask_raw = mask_details.get("mask_image")
+            if mask_raw and isinstance(mask_raw, str):
+                mask = Image.open(io.BytesIO(b64_mod.b64decode(mask_raw)))
+            else:
+                mask = mask_raw
 
         process_params: Dict[str, Any] = {
             "instruction": params.get("instruction", "change background"),
@@ -118,8 +135,8 @@ class OperationHandler:
         }
 
         if mask is not None:
-            logger.info("Using SAM mask for guided background replacement")
-            # Invert: inpaint background (unmasked area), keep foreground (masked area)
+            logger.info("Using mask for guided background replacement")
+            import numpy as np
             inv_mask = Image.fromarray(
                 255 - np.array(mask.convert("L")), mode="L"
             )
@@ -130,7 +147,74 @@ class OperationHandler:
             service = self.model_manager.load_diffusion()
 
         result = service.process("replace_background", image, process_params)
-        return result, {}
+        if result.size != image.size:
+            result = result.resize(image.size, Image.Resampling.LANCZOS)
+
+        result_b64 = image_to_base64(result)
+        layers = []
+
+        if mask is not None:
+            mask_l = mask.convert("L")
+            if mask_l.size != image.size:
+                mask_l = mask_l.resize(image.size, Image.Resampling.LANCZOS)
+            orig_rgba = image.convert("RGBA")
+            fg_r, fg_g, fg_b, _ = orig_rgba.split()
+            fg_layer = Image.merge("RGBA", (fg_r, fg_g, fg_b, mask_l))
+            fg_b64 = image_to_base64(fg_layer)
+
+            result_rgba = result.convert("RGBA")
+            if result_rgba.size != image.size:
+                result_rgba = result_rgba.resize(image.size, Image.Resampling.LANCZOS)
+            bg_r_arr = np.array(result_rgba.split()[0], dtype=np.float32)
+            bg_g_arr = np.array(result_rgba.split()[1], dtype=np.float32)
+            bg_b_arr = np.array(result_rgba.split()[2], dtype=np.float32)
+            orig_r_arr = np.array(orig_rgba.split()[0], dtype=np.float32)
+            orig_g_arr = np.array(orig_rgba.split()[1], dtype=np.float32)
+            orig_b_arr = np.array(orig_rgba.split()[2], dtype=np.float32)
+            msk_arr = np.array(mask_l, dtype=np.float32) / 255.0
+            eps = 1e-8
+            inv_msk_arr = 1.0 - msk_arr
+            bg_r = np.clip((bg_r_arr - orig_r_arr * msk_arr) / (inv_msk_arr + eps), 0, 255).astype(np.uint8)
+            bg_g = np.clip((bg_g_arr - orig_g_arr * msk_arr) / (inv_msk_arr + eps), 0, 255).astype(np.uint8)
+            bg_b = np.clip((bg_b_arr - orig_b_arr * msk_arr) / (inv_msk_arr + eps), 0, 255).astype(np.uint8)
+            inv_msk = Image.fromarray(np.clip(inv_msk_arr * 255, 0, 255).astype(np.uint8), mode="L")
+            bg_only = Image.merge("RGBA", (
+                Image.fromarray(bg_r, mode="L"),
+                Image.fromarray(bg_g, mode="L"),
+                Image.fromarray(bg_b, mode="L"),
+                inv_msk,
+            ))
+            bg_b64 = image_to_base64(bg_only)
+
+            layers = [
+                {"id": "foreground", "name": "Subject", "image": fg_b64, "layer_type": "foreground", "visible": True},
+                {"id": "background", "name": "New Background", "image": bg_b64, "layer_type": "background", "visible": True},
+            ]
+        else:
+            layers = [{"id": "result", "name": "Result", "image": result_b64, "layer_type": "composite", "visible": True}]
+
+        return result, {"layers": layers}
+
+    def _fallback_remove_bg(self, image: Image.Image, context: Optional[Dict[str, Any]] = None) -> Image.Image:
+        logger.warning("rembg failed. Falling back to SAM-based background removal.")
+        if context is None or "mask" not in context:
+            _, mask_details = self.handle_segment(image, {"target": "main subject", "save_mask": False}, context)
+            if context is None:
+                context = {}
+            mask = mask_details.get("mask_image")
+            if mask is None:
+                return image
+        else:
+            mask = context.get("mask")
+        if mask is None:
+            return image
+        from PIL import ImageFilter
+        mask = mask.convert("L").resize(image.size)
+        mask = mask.filter(ImageFilter.SMOOTH)
+        mask = mask.point(lambda p: 255 if p > 60 else 0)
+        image_rgba = image.convert("RGBA")
+        image_rgba.putalpha(mask)
+        return image_rgba
 
     def handle_remove_background(
         self,
@@ -144,127 +228,91 @@ class OperationHandler:
         else:
             logger.info("Pipeline step: remove_background (general-object path)")
 
+        import gc
+        gc.collect()
+        try:
+            import torch
+            torch.cuda.empty_cache()
+            from app.utils.gpu import clear_gpu
+            clear_gpu()
+        except Exception:
+            pass
+
         try:
             import rembg
             import numpy as np
             from PIL import ImageFilter
 
-            # ── Choose rembg model based on content type ──────────────────
             if is_human:
-                # u2net_human_seg is specifically trained for human matting
-                # and produces dramatically better masks around hair, fingers,
-                # and clothing edges compared to isnet-general-use.
                 session = rembg.new_session("u2net_human_seg")
                 logger.info("Using rembg model: u2net_human_seg")
             else:
                 session = rembg.new_session("isnet-general-use")
                 logger.info("Using rembg model: isnet-general-use")
 
-            # Step 1: Get the AI mask from rembg
-            result = rembg.remove(
-                image,
-                session=session,
-                post_process_mask=True,
-            )
+            try:
+                result = rembg.remove(
+                    image,
+                    session=session,
+                    post_process_mask=True,
+                )
+            except Exception as rembg_err:
+                err_str = str(rembg_err)
+                if "Half" in err_str or "float" in err_str.lower() or "dtype" in err_str.lower():
+                    logger.warning("rembg dtype error, falling back to SAM: %s", err_str)
+                    result_rgba = self._fallback_remove_bg(image, context)
+                    from app.utils.image_utils import image_to_base64 as _i2b
+                    fb_b64 = _i2b(result_rgba)
+                    return result_rgba, {"layers": [{"id": "subject", "name": "Subject", "image": fb_b64, "layer_type": "foreground", "visible": True}]}
+                raise
+
+            if result.size != image.size:
+                result = result.resize(image.size, Image.Resampling.LANCZOS)
+
+            logger.debug("rembg result size after resize: %s", result.size)
+            logger.debug("image size: %s", image.size)
+
             ai_alpha = np.array(result.split()[3])
 
-            img_np = np.array(image.convert("RGB")).astype(np.float32)
-            h, w = img_np.shape[:2]
+            # ── Post-process alpha mask ────────────────────────────────────
+            # Trust the AI mask directly. The LAB color-distance mask is
+            # omitted because it assumes a uniform background color across the
+            # entire image, which breaks when the foreground touches the
+            # corners or the background is complex, causing the mask to become
+            # fully opaque.
 
-            if is_human:
-                # ── Human-specific path ───────────────────────────────────
-                # For humans we trust the AI mask entirely and skip the LAB
-                # color-distance mask. The color-distance approach assumes the
-                # foreground is chromatically distant from the background,
-                # which breaks on skin tones close to common bg colors (beige,
-                # light gray, white) and causes body parts to be erased.
-                combined_alpha = ai_alpha
+            # Dilation (3px) to recover clipped edge pixels (e.g. thin text).
+            dilation = 5 if is_human else 3
+            alpha_img = Image.fromarray(ai_alpha, mode="L")
+            alpha_img = alpha_img.filter(ImageFilter.MaxFilter(dilation))
 
-                # Larger dilation (5px) to recover fine hair strands and
-                # clothing fringes that the AI mask clips.
-                alpha_img = Image.fromarray(combined_alpha, mode="L")
-                alpha_img = alpha_img.filter(ImageFilter.MaxFilter(5))
+            # Gaussian feathering for smooth, natural edges.
+            alpha_img = alpha_img.filter(ImageFilter.GaussianBlur(radius=1.5))
 
-                # Gaussian-feathered edges for a smooth, natural transition
-                # instead of the harsh jagged boundary from binary masking.
-                alpha_img = alpha_img.filter(ImageFilter.GaussianBlur(radius=1.5))
+            # Re-threshold: interior fully opaque, border feathered,
+            # background fully transparent.
+            alpha_np = np.array(alpha_img, dtype=np.float32)
+            alpha_np = np.where(alpha_np > 240, 255.0, alpha_np)
+            alpha_np = np.where(alpha_np < 15, 0.0, alpha_np)
+            alpha_img = Image.fromarray(alpha_np.astype(np.uint8), mode="L")
 
-                # Re-threshold to keep the interior fully opaque while only
-                # feathering the border pixels.
-                alpha_np = np.array(alpha_img, dtype=np.float32)
-                alpha_np = np.where(alpha_np > 240, 255.0, alpha_np)
-                alpha_np = np.where(alpha_np < 15, 0.0, alpha_np)
-                alpha_img = Image.fromarray(alpha_np.astype(np.uint8), mode="L")
-            else:
-                # ── General-object path (logos, products) ─────────────────
-                # Unchanged from the original implementation.
-
-                # Step 2: Detect the background color by sampling corners
-                sample_size = max(10, min(h, w) // 20)
-                corners = np.concatenate([
-                    img_np[:sample_size, :sample_size].reshape(-1, 3),
-                    img_np[:sample_size, -sample_size:].reshape(-1, 3),
-                    img_np[-sample_size:, :sample_size].reshape(-1, 3),
-                    img_np[-sample_size:, -sample_size:].reshape(-1, 3),
-                ])
-                bg_color = np.median(corners, axis=0)
-
-                # Step 3: Perceptual color distance in LAB space
-                def rgb_to_lab(rgb_array):
-                    """Convert RGB (0-255 float) to LAB for perceptual distance."""
-                    rgb = rgb_array / 255.0
-                    mask = rgb > 0.04045
-                    rgb = np.where(mask, ((rgb + 0.055) / 1.055) ** 2.4, rgb / 12.92)
-                    x = rgb[..., 0] * 0.4124564 + rgb[..., 1] * 0.3575761 + rgb[..., 2] * 0.1804375
-                    y = rgb[..., 0] * 0.2126729 + rgb[..., 1] * 0.7151522 + rgb[..., 2] * 0.0721750
-                    z = rgb[..., 0] * 0.0193339 + rgb[..., 1] * 0.1191920 + rgb[..., 2] * 0.9503041
-                    x, y, z = x / 0.95047, y / 1.0, z / 1.08883
-
-                    def f(t):
-                        delta = 6.0 / 29.0
-                        return np.where(t > delta**3, t**(1.0/3.0), t / (3 * delta**2) + 4.0/29.0)
-                    fx, fy, fz = f(x), f(y), f(z)
-                    L = 116.0 * fy - 16.0
-                    a = 500.0 * (fx - fy)
-                    b = 200.0 * (fy - fz)
-                    return np.stack([L, a, b], axis=-1)
-
-                img_lab = rgb_to_lab(img_np)
-                bg_lab = rgb_to_lab(bg_color.reshape(1, 1, 3)).reshape(3)
-                diff = np.sqrt(np.sum((img_lab - bg_lab) ** 2, axis=2))
-                color_alpha = np.clip((diff - 5.0) / 10.0, 0.0, 1.0) * 255.0
-                color_alpha = color_alpha.astype(np.uint8)
-
-                # Step 4: Combine AI mask with color-distance mask
-                combined_alpha = np.maximum(ai_alpha, color_alpha)
-
-                # Step 5: Dilate by 2px to recover clipped text edges
-                alpha_img = Image.fromarray(combined_alpha, mode="L")
-                alpha_img = alpha_img.filter(ImageFilter.MaxFilter(3))
-
-            # ── Common final assembly ─────────────────────────────────────
-            # Step 6: Assemble final RGBA using original image colors
+            # ── Final assembly ────────────────────────────────────────────
             orig_rgba = image.convert("RGBA")
             r_orig, g_orig, b_orig, _ = orig_rgba.split()
             result = Image.merge("RGBA", (r_orig, g_orig, b_orig, alpha_img))
 
-            # Step 7: Auto-crop transparent borders for a tight result
-            bbox = result.getbbox()
-            if bbox:
-                pad_x = max(10, int(w * 0.02))
-                pad_y = max(10, int(h * 0.02))
-                crop_box = (
-                    max(0, bbox[0] - pad_x),
-                    max(0, bbox[1] - pad_y),
-                    min(w, bbox[2] + pad_x),
-                    min(h, bbox[3] + pad_y),
-                )
-                result = result.crop(crop_box)
-
-            return result, {}
+            from app.utils.image_utils import image_to_base64
+            subject_b64 = image_to_base64(result)
+            layers = [{
+                "id": "subject",
+                "name": "Subject",
+                "image": subject_b64,
+                "layer_type": "foreground",
+                "visible": True,
+            }]
+            return result, {"layers": layers}
         except ImportError:
             logger.warning("rembg is not installed. Falling back to SAM (which has aliased edges).")
-            # Make sure we have a mask, otherwise just segment the whole image's main subject
             if context is None or "mask" not in context:
                 img_temp, mask_details = self.handle_segment(image, {"target": "main subject"}, context)
                 if context is None:
@@ -276,14 +324,12 @@ class OperationHandler:
             if mask is None:
                 return image, {}
 
-            # Convert image to RGBA
+            from app.utils.image_utils import image_to_base64 as _i2b
             image_rgba = image.convert("RGBA")
-            # Ensure mask is L mode and same size
             mask_l = mask.convert("L").resize(image_rgba.size)
-
-            # Apply mask to alpha channel
             image_rgba.putalpha(mask_l)
-            return image_rgba, {}
+            rgba_b64 = _i2b(image_rgba)
+            return image_rgba, {"layers": [{"id": "subject", "name": "Subject", "image": rgba_b64, "layer_type": "foreground", "visible": True}]}
         
     def handle_style_transfer(
         self,
@@ -397,6 +443,17 @@ class PipelineExecutor:
             duration=duration,
         )
 
+    def _compute_mask(self, before: Image.Image, after: Image.Image) -> Image.Image:
+        if after.size != before.size:
+            after = after.resize(before.size, Image.Resampling.LANCZOS)
+        before_np = np.array(before.convert("RGB"), dtype=np.float32)
+        after_np = np.array(after.convert("RGB"), dtype=np.float32)
+        diff = np.abs(before_np - after_np)
+        diff_gray = diff.mean(axis=2)
+        threshold = 5.0
+        mask_np = np.where(diff_gray > threshold, 255, 0).astype(np.uint8)
+        return Image.fromarray(mask_np, mode="L")
+
     def _execute_sync(
         self,
         plan: List[Dict[str, Any]],
@@ -422,6 +479,8 @@ class PipelineExecutor:
             step_start = time.monotonic()
 
             try:
+                before_image = current_image.copy()
+
                 handler = self._operation_map.get(op_name)
                 if handler is None:
                     raise ValueError(f"No handler registered for operation: {op_name}")
@@ -429,6 +488,16 @@ class PipelineExecutor:
                 current_image, details = handler(current_image, params, context)
                 if current_image.mode != "RGBA":
                     current_image = ensure_rgb(current_image)
+
+                mask = details.pop("mask_image", None) if details else None
+                if mask is None:
+                    mask = self._compute_mask(before_image, current_image)
+                else:
+                    if isinstance(mask, Image.Image):
+                        mask = mask.convert("L")
+                    else:
+                        mask = self._compute_mask(before_image, current_image)
+                mask_b64 = image_to_base64(mask)
 
                 intermediate = save_image(
                     current_image,
@@ -440,6 +509,7 @@ class PipelineExecutor:
                 step_entry = {
                     "operation": op_name,
                     "image": image_to_base64(current_image),
+                    "mask": mask_b64,
                     "duration_ms": round(step_duration, 2),
                     "details": details if details else None,
                 }

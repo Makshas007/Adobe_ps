@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.api import edit, health, upload
+from app.api import analyze, edit, health, upload
 from app.config import settings
 from app.utils.logger import app_logger, setup_logger
 
@@ -23,6 +23,10 @@ async def lifespan(app: FastAPI):
     cuda_ok = cuda_available()
     app_logger.info("CUDA available: %s", cuda_ok)
     app_logger.info("Gemini configured: %s", settings.is_gemini_configured)
+
+    from app.tools.registry import ToolRegistry
+    ToolRegistry.initialize()
+    app_logger.info("Tool registry initialized")
 
     for path_key in ("upload_path", "output_path", "temp_path"):
         p: Path = getattr(settings, path_key)
@@ -91,6 +95,7 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
 app.include_router(health.router)
 app.include_router(upload.router)
 app.include_router(edit.router)
+app.include_router(analyze.router)
 
 frontend_dist = Path(__file__).parent.parent.parent / "frontend" / "dist"
 
