@@ -1,5 +1,6 @@
 import ColorPicker from './ColorPicker'
 import { useState, useEffect } from 'react'
+import { FONT_CATEGORIES } from '../utilities/fontFamilies.js'
 
 const TOOL_NAMES = {
   brush: 'Brush Settings',
@@ -176,6 +177,7 @@ export default function ToolOptions({
                 <span className="tool-option-value">{Math.round((selectedObject.opacity ?? 1) * 100)}%</span>
               </div>
             </div>
+<<<<<<< Updated upstream
              {selectedObject.type === 'i-text' && (
                <>
                <div className="tool-sidebar-field">
@@ -196,6 +198,38 @@ export default function ToolOptions({
                </div>
                <div className="tool-sidebar-field">
                  <label>Font Size</label>
+=======
+<<<<<<< Updated upstream
+            {selectedObject.type === 'i-text' && (
+              <>
+              <div className="tool-sidebar-field">
+                <label>Font Size</label>
+=======
+             {selectedObject.type === 'i-text' && (
+               <>
+                <div className="tool-sidebar-field">
+                  <label>Font Family</label>
+                  <select
+                    className="tool-sidebar-select font-family-select"
+                    value={selectedObject.fontFamily || 'Inter, sans-serif'}
+                    onChange={(e) => onUpdateSelectedObject({ fontFamily: e.target.value })}
+                    style={{ fontFamily: (selectedObject.fontFamily || 'Inter, sans-serif').split(',')[0].replace(/['"]/g, '') }}
+                  >
+                    {FONT_CATEGORIES.map(cat => (
+                      <optgroup key={cat.name} label={cat.name}>
+                        {cat.fonts.map(f => (
+                          <option key={f.value} value={f.value} style={{ fontFamily: f.value.split(',')[0].replace(/['"]/g, '') }}>
+                            {f.label}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                </div>
+               <div className="tool-sidebar-field">
+                 <label>Font Size</label>
+>>>>>>> Stashed changes
+>>>>>>> Stashed changes
                 <div className="tool-sidebar-slider-row">
                   <input
                     type="range"
@@ -376,6 +410,7 @@ export default function ToolOptions({
               <label>Color</label>
               <ColorPicker color={brushColor} onChange={setBrushColor} />
             </div>
+<<<<<<< Updated upstream
              {activeTool === 'text' && (
                <>
                <div className="tool-sidebar-field">
@@ -394,6 +429,31 @@ export default function ToolOptions({
                    <option value="Impact, sans-serif">Impact</option>
                  </select>
                </div>
+=======
+<<<<<<< Updated upstream
+=======
+             {activeTool === 'text' && (
+               <>
+                <div className="tool-sidebar-field">
+                  <label>Font Family</label>
+                  <select
+                    className="tool-sidebar-select font-family-select"
+                    value={textFontFamily}
+                    onChange={(e) => setTextFontFamily(e.target.value)}
+                    style={{ fontFamily: textFontFamily.split(',')[0].replace(/['"]/g, '') }}
+                  >
+                    {FONT_CATEGORIES.map(cat => (
+                      <optgroup key={cat.name} label={cat.name}>
+                        {cat.fonts.map(f => (
+                          <option key={f.value} value={f.value} style={{ fontFamily: f.value.split(',')[0].replace(/['"]/g, '') }}>
+                            {f.label}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                </div>
+>>>>>>> Stashed changes
                <div className="tool-sidebar-field">
                  <label>Text BG</label>
                  <ColorPicker
@@ -404,6 +464,10 @@ export default function ToolOptions({
                </div>
                </>
              )}
+<<<<<<< Updated upstream
+=======
+>>>>>>> Stashed changes
+>>>>>>> Stashed changes
             {activeTool !== 'text' && (
               <div className="tool-sidebar-field">
                 <label>Opacity</label>

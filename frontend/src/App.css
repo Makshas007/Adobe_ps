@@ -1561,5 +1561,25 @@
 .tool-sidebar-select option {
   background: #1e1e1e;
   color: var(--text);
+  font-size: 13px;
+  padding: 4px 8px;
+}
+
+.tool-sidebar-select optgroup {
+  background: #1e1e1e;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.tool-sidebar-select.font-family-select {
+  font-family: inherit;
+}
+
+.tool-sidebar-select.font-family-select option {
+  font-size: 13px;
+  padding: 6px 8px;
 }
 
