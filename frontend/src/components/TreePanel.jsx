@@ -32,13 +32,20 @@ function flattenTree(node, edges, currId) {
       type: 'historyEdge',
     }
     if (hasSameJob) {
-      edgeObj.style = { stroke: '#00f0ff', strokeWidth: 3, strokeDasharray: 'none' }
+      edgeObj.animated = true; // Triggers the default React Flow animation
+      edgeObj.style = { 
+        stroke: '#160a4a', 
+        strokeWidth: 3, 
+        strokeDasharray: '5, 5', // Creates a dashed pattern that will move
+        filter: 'drop-shadow(0px 0px 4px #830c0c)'
+      };
+
       edgeObj.markerEnd = {
         type: MarkerType.ArrowClosed,
-        color: '#00f0ff',
+        color: '#0b0d82',
         width: 15,
         height: 15,
-      }
+      };
     }
     edges.push(edgeObj)
     const [childNodes] = flattenTree(child, edges, currId)
